@@ -1,0 +1,824 @@
+import { useCallback, useMemo, useState } from 'react'
+import { exportScheduleToPdf } from '../utils/pdfExport'
+import {
+  addDaysYmd,
+  chipTextColors,
+  formatRuDate,
+  formatShiftRange,
+  monthDateStrings,
+  shiftHours,
+  shortageDeductionsEqualCents,
+  timeToMinutes,
+  weekdayShortRu,
+} from '../utils/scheduleMath'
+
+const PRESET_COLORS = ['#f0d4cf', '#c8d8b2', '#b8d4e8', '#e8d4f5', '#ffe4b3', '#ffd4dc', '#d4e8d4', '#e0d4c8']
+
+/** Для старых записей без своих времён в JSON */
+const LEGACY_START = '09:00'
+const LEGACY_END = '23:00'
+
+function newShiftId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return `sh_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+}
+
+function newEmployeeId() {
+  return `emp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** Суммы в тенге без копеек (для отображения) */
+function tenge(n) {
+  return Math.round(Number(n) || 0)
+}
+
+function ScheduleView({
+  data,
+  onChange,
+  canEdit,
+  onRequestUnlock,
+  onSave,
+  saving,
+  loading,
+  saveError,
+  loadError,
+  onReload,
+}) {
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth())
+  const [patternOpen, setPatternOpen] = useState(false)
+  const [patternEmp, setPatternEmp] = useState('')
+  const [patternStart, setPatternStart] = useState('')
+  const [patternDays, setPatternDays] = useState(28)
+  const [dayModal, setDayModal] = useState(null)
+  const [dayModalError, setDayModalError] = useState('')
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfError, setPdfError] = useState('')
+
+  const dates = useMemo(() => monthDateStrings(year, month), [year, month])
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+
+  const shiftsByDate = useMemo(() => {
+    const map = new Map()
+    ;(data.shifts || []).forEach((s) => {
+      if (!s.date) return
+      if (!map.has(s.date)) map.set(s.date, [])
+      map.get(s.date).push(s)
+    })
+    map.forEach((list) => {
+      list.sort(
+        (a, b) =>
+          timeToMinutes((a.start || LEGACY_START).trim() || LEGACY_START) -
+          timeToMinutes((b.start || LEGACY_START).trim() || LEGACY_START),
+      )
+    })
+    return map
+  }, [data.shifts])
+
+  const totals = useMemo(() => {
+    const byEmp = {}
+    ;(data.employees || []).forEach((e) => {
+      byEmp[e.id] = { hours: 0, pay: 0, rate: Number(e.hourlyRate) || 0 }
+    })
+    ;(data.shifts || []).forEach((s) => {
+      if (!dates.includes(s.date)) return
+      if (!byEmp[s.employeeId]) {
+        byEmp[s.employeeId] = { hours: 0, pay: 0, rate: 0 }
+      }
+      const h = shiftHours(s, LEGACY_START, LEGACY_END)
+      byEmp[s.employeeId].hours += h
+    })
+    Object.keys(byEmp).forEach((id) => {
+      const t = byEmp[id]
+      t.pay = Math.round(t.hours * t.rate)
+    })
+    return byEmp
+  }, [data, dates])
+
+  const grandTotal = useMemo(() => {
+    let pay = 0
+    let hours = 0
+    Object.values(totals).forEach((t) => {
+      pay += t.pay
+      hours += t.hours
+    })
+    return { pay: tenge(pay), hours: Math.round(hours * 100) / 100 }
+  }, [totals])
+
+  const shortageMap = data.shortageByMonth || {}
+  const hasShortageKey = Object.prototype.hasOwnProperty.call(shortageMap, monthKey)
+  const shortageAmount = tenge(Math.max(0, Number(shortageMap[monthKey]) || 0))
+  const shortageCents = shortageAmount * 100
+  const bonusesByMonth = data.bonusesByMonth || {}
+  const monthBonuses =
+    bonusesByMonth[monthKey] && typeof bonusesByMonth[monthKey] === 'object' && !Array.isArray(bonusesByMonth[monthKey])
+      ? bonusesByMonth[monthKey]
+      : {}
+
+  const { employeePayouts, netPay } = useMemo(() => {
+    const emps = data.employees || []
+    const grossCents = emps.map((e) => {
+      const t = totals[e.id] || { hours: 0, pay: 0 }
+      return tenge(t.pay || 0) * 100
+    })
+    const dedCents = shortageDeductionsEqualCents(emps.length, shortageCents)
+    let totalNetTenge = 0
+    const rows = emps.map((e, i) => {
+      const t = totals[e.id] || { hours: 0, pay: 0 }
+      const gC = grossCents[i] || 0
+      const dC = dedCents[i] || 0
+      const bonus = tenge(Number(monthBonuses[e.id]) || 0)
+      const nC = Math.max(0, gC - dC + bonus * 100)
+      const netTenge = Math.round(nC / 100)
+      totalNetTenge += netTenge
+      return {
+        id: e.id,
+        hours: t.hours,
+        gross: gC / 100,
+        deduction: Math.round(dC / 100),
+        bonus,
+        net: netTenge,
+      }
+    })
+    return { employeePayouts: rows, netPay: totalNetTenge }
+  }, [data.employees, totals, shortageCents, monthBonuses])
+
+  const setShortageForMonth = (raw) => {
+    const sm = { ...shortageMap }
+    if (raw === '' || raw === null) {
+      delete sm[monthKey]
+      onChange({ ...data, shortageByMonth: sm })
+      return
+    }
+    const v = tenge(Math.max(0, Number(raw) || 0))
+    sm[monthKey] = v
+    onChange({ ...data, shortageByMonth: sm })
+  }
+
+  const setBonusForEmployeeMonth = (employeeId, raw) => {
+    const all = { ...(data.bonusesByMonth || {}) }
+    const currentMonth = {
+      ...(all[monthKey] && typeof all[monthKey] === 'object' && !Array.isArray(all[monthKey]) ? all[monthKey] : {}),
+    }
+    if (raw === '' || raw === null) {
+      delete currentMonth[employeeId]
+    } else {
+      currentMonth[employeeId] = tenge(Math.max(0, Number(raw) || 0))
+    }
+    if (Object.keys(currentMonth).length === 0) {
+      delete all[monthKey]
+    } else {
+      all[monthKey] = currentMonth
+    }
+    onChange({ ...data, bonusesByMonth: all })
+  }
+
+  const setField = (key, val) => {
+    onChange({ ...data, [key]: val })
+  }
+
+  const addEmployee = () => {
+    const color = PRESET_COLORS[(data.employees || []).length % PRESET_COLORS.length]
+    const next = [
+      ...(data.employees || []),
+      { id: newEmployeeId(), name: 'Сотрудник', color, hourlyRate: 300 },
+    ]
+    setField('employees', next)
+  }
+
+  const updateEmployee = (id, patch) => {
+    setField(
+      'employees',
+      (data.employees || []).map((e) => (e.id === id ? { ...e, ...patch } : e)),
+    )
+  }
+
+  const removeEmployee = (id) => {
+    const nextBonuses = {}
+    Object.entries(data.bonusesByMonth || {}).forEach(([mk, monthMap]) => {
+      if (!monthMap || typeof monthMap !== 'object' || Array.isArray(monthMap)) return
+      const copy = { ...monthMap }
+      delete copy[id]
+      if (Object.keys(copy).length) nextBonuses[mk] = copy
+    })
+    onChange({
+      ...data,
+      employees: (data.employees || []).filter((e) => e.id !== id),
+      shifts: (data.shifts || []).filter((s) => s.employeeId !== id),
+      bonusesByMonth: nextBonuses,
+    })
+  }
+
+  const openDayModal = (ymd) => {
+    setDayModalError('')
+    const existing = (data.shifts || []).filter((s) => s.date === ymd)
+    const emps = data.employees || []
+    const firstId = emps[0]?.id || ''
+
+    if (existing.length === 0) {
+      setDayModal({
+        date: ymd,
+        readOnly: !canEdit,
+        rows: canEdit
+          ? [{ id: newShiftId(), employeeId: firstId, start: '09:00', end: '18:00' }]
+          : [],
+      })
+      return
+    }
+
+    setDayModal({
+      date: ymd,
+      readOnly: !canEdit,
+      rows: existing.map((s) => ({
+        id: s.id || newShiftId(),
+        employeeId: s.employeeId,
+        start: (s.start && String(s.start).trim()) || LEGACY_START,
+        end: (s.end && String(s.end).trim()) || LEGACY_END,
+      })),
+    })
+  }
+
+  const closeDayModal = () => {
+    setDayModal(null)
+    setDayModalError('')
+  }
+
+  /** Удалить все смены за выбранную дату (можно заново открыть день и ввести данные). */
+  const clearDayShifts = (ymd) => {
+    if (!canEdit) return
+    const has = (data.shifts || []).some((s) => s.date === ymd)
+    if (!has) return
+    onChange({
+      ...data,
+      shifts: (data.shifts || []).filter((s) => s.date !== ymd),
+    })
+    if (dayModal?.date === ymd) closeDayModal()
+  }
+
+  const updateDayModalRow = (index, patch) => {
+    setDayModal((prev) => {
+      if (!prev || prev.readOnly) return prev
+      const rows = prev.rows.map((r, i) => (i === index ? { ...r, ...patch } : r))
+      return { ...prev, rows }
+    })
+  }
+
+  const addDayModalRow = () => {
+    setDayModal((prev) => {
+      if (!prev || prev.readOnly) return prev
+      const firstId = (data.employees || [])[0]?.id || ''
+      return {
+        ...prev,
+        rows: [
+          ...prev.rows,
+          { id: newShiftId(), employeeId: firstId, start: '09:00', end: '18:00' },
+        ],
+      }
+    })
+  }
+
+  const removeDayModalRow = (index) => {
+    setDayModal((prev) => {
+      if (!prev || prev.readOnly) return prev
+      return { ...prev, rows: prev.rows.filter((_, i) => i !== index) }
+    })
+  }
+
+  const saveDayModal = () => {
+    if (!dayModal || dayModal.readOnly) return
+    const { date, rows } = dayModal
+    const hasIncomplete = rows.some((r) => {
+      const empty = !r.employeeId && !r.start && !r.end
+      if (empty) return false
+      const ok = r.employeeId && r.start && r.end
+      return !ok
+    })
+    if (hasIncomplete) {
+      setDayModalError('У каждой заполненной строки укажите сотрудника и время «с» и «до». Или очистите строку.')
+      return
+    }
+    const validRows = rows.filter((r) => r.employeeId && r.start && r.end)
+    const rest = (data.shifts || []).filter((s) => s.date !== date)
+    const added = validRows.map((r) => ({
+      id: r.id || newShiftId(),
+      date,
+      employeeId: r.employeeId,
+      start: String(r.start).trim(),
+      end: String(r.end).trim(),
+    }))
+    onChange({ ...data, shifts: [...rest, ...added] })
+    closeDayModal()
+  }
+
+  const applyPattern22 = () => {
+    if (!patternEmp || !patternStart) return
+    const num = Math.min(120, Math.max(1, Number(patternDays) || 28))
+    let shifts = [...(data.shifts || [])]
+    shifts = shifts.filter((s) => {
+      if (s.employeeId !== patternEmp) return true
+      let d = patternStart
+      for (let i = 0; i < num; i++) {
+        if (s.date === d) return false
+        d = addDaysYmd(d, 1)
+      }
+      return true
+    })
+    let d = patternStart
+    for (let i = 0; i < num; i++) {
+      const inWork = i % 4 < 2
+      if (inWork) {
+        shifts.push({
+          id: newShiftId(),
+          date: d,
+          employeeId: patternEmp,
+          start: LEGACY_START,
+          end: LEGACY_END,
+        })
+      }
+      d = addDaysYmd(d, 1)
+    }
+    onChange({ ...data, shifts })
+    setPatternOpen(false)
+  }
+
+  const monthLabel = new Date(year, month, 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' })
+
+  const buildSchedulePdfPayload = useCallback(() => {
+    const calendarRows = dates.map((ymd) => {
+      const dayShifts = shiftsByDate.get(ymd) || []
+      const lines = dayShifts.map((s) => {
+        const emp = (data.employees || []).find((x) => x.id === s.employeeId)
+        const h = shiftHours(s, LEGACY_START, LEGACY_END)
+        const range = formatShiftRange(s, LEGACY_START, LEGACY_END)
+        return `${emp?.name || '?'}: ${range}, ${h} ч`
+      })
+      return {
+        label: `${weekdayShortRu(ymd)} ${formatRuDate(ymd)}`,
+        shiftsText: lines.length ? lines.join('\n') : '—',
+      }
+    })
+    const summaryRows = (data.employees || []).map((e, i) => {
+      const row = employeePayouts[i] || { hours: 0, gross: 0, net: 0 }
+      return {
+        name: e.name,
+        hours: row.hours,
+        gross: tenge(row.gross),
+        net: tenge(row.net),
+      }
+    })
+    return {
+      title: monthLabel,
+      filenameStem: monthKey,
+      calendarRows,
+      summary: {
+        rows: summaryRows,
+        totalHours: grandTotal.hours,
+        totalGross: tenge(grandTotal.pay),
+        shortage: hasShortageKey ? tenge(shortageAmount) : 0,
+        netPay: tenge(netPay),
+      },
+    }
+  }, [
+    dates,
+    shiftsByDate,
+    data.employees,
+    employeePayouts,
+    grandTotal.hours,
+    grandTotal.pay,
+    monthLabel,
+    monthKey,
+    hasShortageKey,
+    shortageAmount,
+    netPay,
+  ])
+
+  const handleExportPdf = async () => {
+    setPdfError('')
+    setPdfBusy(true)
+    try {
+      await exportScheduleToPdf(buildSchedulePdfPayload())
+    } catch (e) {
+      setPdfError(e?.message || 'Не удалось создать PDF')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
+
+  return (
+    <section className="schedule-page">
+      {loadError ? <p className="error">{loadError}</p> : null}
+
+      <div className="schedule-toolbar schedule-toolbar-row">
+        {!canEdit ? (
+          <button type="button" className="btn btn-dark schedule-unlock" onClick={onRequestUnlock}>
+            Редактировать (PIN)
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-dark schedule-unlock"
+            onClick={onSave}
+            disabled={saving}
+          >
+            {saving ? 'Сохранение...' : 'Сохранить в таблицу'}
+          </button>
+        )}
+        {onReload ? (
+          <button type="button" className="ghost-btn schedule-reload" onClick={onReload}>
+            Обновить с сервера
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ghost-btn schedule-export-pdf"
+          onClick={handleExportPdf}
+          disabled={pdfBusy}
+        >
+          {pdfBusy ? 'PDF…' : 'Скачать PDF'}
+        </button>
+      </div>
+      {loading ? (
+        <div className="schedule-loading" role="status" aria-live="polite">
+          <span className="schedule-loading-spinner" aria-hidden />
+          <span>Загрузка графика...</span>
+        </div>
+      ) : null}
+      {saveError ? <p className="error">{saveError}</p> : null}
+      {pdfError ? <p className="error">{pdfError}</p> : null}
+
+      <p className="muted small schedule-hint">
+        Нажмите на <strong>дату</strong> в списке ниже, чтобы задать смены и часы на этот день.
+      </p>
+
+      <div className="schedule-employees">
+        <div className="schedule-employees-head">
+          <h4>Сотрудники</h4>
+          {canEdit ? (
+            <button type="button" className="ghost-btn" onClick={addEmployee}>
+              + Добавить
+            </button>
+          ) : null}
+        </div>
+        {(data.employees || []).length === 0 ? (
+          <p className="muted">Добавьте сотрудников, затем откройте день в календаре.</p>
+        ) : null}
+        <div className="schedule-emp-list">
+          {(data.employees || []).map((e) => (
+            <div key={e.id} className="schedule-emp-card" style={{ borderColor: e.color }}>
+              <span className="schedule-color-swatch" style={{ background: e.color }} aria-hidden />
+              <div className="schedule-emp-fields">
+                <input
+                  className="schedule-emp-name"
+                  value={e.name}
+                  onChange={(ev) => updateEmployee(e.id, { name: ev.target.value })}
+                  disabled={!canEdit}
+                  placeholder="Имя"
+                />
+                <label className="schedule-rate">
+                  ₸/час
+                  <input
+                    type="number"
+                    min={0}
+                    step={10}
+                    value={e.hourlyRate}
+                    onChange={(ev) => updateEmployee(e.id, { hourlyRate: Number(ev.target.value) || 0 })}
+                    disabled={!canEdit}
+                  />
+                </label>
+                {canEdit ? (
+                  <input
+                    type="color"
+                    className="schedule-color-input"
+                    value={e.color?.startsWith('#') ? e.color : '#f0d4cf'}
+                    onChange={(ev) => updateEmployee(e.id, { color: ev.target.value })}
+                  />
+                ) : null}
+              </div>
+              {canEdit ? (
+                <button type="button" className="ghost-btn schedule-emp-remove" onClick={() => removeEmployee(e.id)}>
+                  ×
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {canEdit ? (
+        <div className="schedule-pattern-bar">
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => {
+              if (!patternStart && dates[0]) setPatternStart(dates[0])
+              if (!patternEmp && (data.employees || [])[0]) setPatternEmp(data.employees[0].id)
+              setPatternOpen(true)
+            }}
+          >
+            Заполнить 2/2
+          </button>
+          <span className="muted small schedule-pattern-hint">интервалы {LEGACY_START}–{LEGACY_END}</span>
+        </div>
+      ) : null}
+
+      <div className="schedule-month-nav">
+        <button
+          type="button"
+          className="icon-btn schedule-nav-btn"
+          onClick={() => {
+            if (month === 0) {
+              setMonth(11)
+              setYear((y) => y - 1)
+            } else setMonth((m) => m - 1)
+          }}
+        >
+          ←
+        </button>
+        <h4 className="schedule-month-title">{monthLabel}</h4>
+        <button
+          type="button"
+          className="icon-btn schedule-nav-btn"
+          onClick={() => {
+            if (month === 11) {
+              setMonth(0)
+              setYear((y) => y + 1)
+            } else setMonth((m) => m + 1)
+          }}
+        >
+          →
+        </button>
+      </div>
+
+      <div className="schedule-calendar">
+        {dates.map((ymd) => {
+          const dayShifts = shiftsByDate.get(ymd) || []
+          return (
+            <div key={ymd} className="schedule-day-row">
+              <div className="schedule-day-label-col">
+                <button
+                  type="button"
+                  className={`schedule-day-label ${canEdit ? 'is-tappable' : ''}`}
+                  onClick={() => openDayModal(ymd)}
+                >
+                  <span className="schedule-day-wd">{weekdayShortRu(ymd)}</span>
+                  <span className="schedule-day-num">{formatRuDate(ymd)}</span>
+                </button>
+              </div>
+              <div className="schedule-day-chips">
+                {dayShifts.map((s) => {
+                  const emp = (data.employees || []).find((x) => x.id === s.employeeId)
+                  const h = shiftHours(s, LEGACY_START, LEGACY_END)
+                  const range = formatShiftRange(s, LEGACY_START, LEGACY_END)
+                  const key = s.id || `${s.date}-${s.employeeId}-${range}`
+                  const bg = emp?.color || '#eee'
+                  const { main, muted } = chipTextColors(bg)
+                  return (
+                    <div key={key} className="schedule-chip-row">
+                      <div
+                        className="schedule-chip schedule-chip-readonly"
+                        style={{
+                          background: bg,
+                          color: main,
+                          ['--chip-muted']: muted,
+                        }}
+                      >
+                        <span className="schedule-chip-name">{emp?.name || '?'}</span>
+                        <span className="schedule-chip-range">{range}</span>
+                        <span className="schedule-chip-h">{h} ч</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {dayShifts.length === 0 ? <span className="muted schedule-day-empty">—</span> : null}
+              </div>
+              {canEdit && dayShifts.length > 0 ? (
+                <button
+                  type="button"
+                  className="schedule-day-clear"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    clearDayShifts(ymd)
+                  }}
+                  aria-label={`Очистить смены за ${formatRuDate(ymd)}`}
+                  title="Удалить все смены за этот день"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="schedule-totals">
+        <h4>Итого за месяц</h4>
+        <div className="schedule-totals-grid">
+          <div className="schedule-total-row schedule-totals-head" aria-hidden>
+            <span className="schedule-total-dot schedule-total-dot-spacer" />
+            <span className="muted">Сотрудник</span>
+            <span className="muted schedule-total-col-num">Часы</span>
+            <span className="muted schedule-total-col-num">Начислено</span>
+            <span className="muted schedule-total-col-num">К выплате</span>
+          </div>
+          {(data.employees || []).map((e, i) => {
+            const row = employeePayouts[i] || { hours: 0, gross: 0, deduction: 0, bonus: 0, net: 0 }
+            return (
+              <div key={e.id} className="schedule-total-row">
+                <span className="schedule-total-dot" style={{ background: e.color }} />
+                <span className="schedule-total-name">{e.name}</span>
+                <strong className="schedule-total-col-num">{row.hours} ч</strong>
+                <strong className="schedule-total-col-num">{tenge(row.gross)} ₸</strong>
+                <strong className="schedule-total-col-num schedule-total-net">{tenge(row.net)} ₸</strong>
+              </div>
+            )
+          })}
+        </div>
+        <div className="schedule-grand">
+          <span>Всего часов</span>
+          <strong>{grandTotal.hours} ч</strong>
+          <span>Начислено всего</span>
+          <strong>{tenge(grandTotal.pay)} ₸</strong>
+        </div>
+        <div className="schedule-shortage-block">
+          <label className="schedule-shortage-label">
+            Недостача за месяц
+            <input
+              type="number"
+              min={0}
+              step={100}
+              className="schedule-shortage-input"
+              value={hasShortageKey ? shortageAmount : ''}
+              onChange={(e) => setShortageForMonth(e.target.value)}
+              disabled={!canEdit}
+              placeholder="0"
+            />
+            <span className="schedule-currency-suffix">₸</span>
+          </label>
+          <p className="muted small">
+            Делится <strong>поровну</strong> между всеми сотрудниками в списке и вычитается в колонке «К выплате».
+          </p>
+        </div>
+        <div className="schedule-shortage-block">
+          <h5 className="schedule-bonus-title">Бонус за месяц</h5>
+          <div className="schedule-bonus-grid">
+            {(data.employees || []).map((e) => (
+              <label key={e.id} className="schedule-bonus-row">
+                <span className="schedule-bonus-name">{e.name}</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  className="schedule-shortage-input"
+                  value={monthBonuses[e.id] ?? ''}
+                  onChange={(ev) => setBonusForEmployeeMonth(e.id, ev.target.value)}
+                  disabled={!canEdit}
+                  placeholder="0"
+                />
+                <span className="schedule-currency-suffix">₸</span>
+              </label>
+            ))}
+          </div>
+          <p className="muted small">Добавляется к выплате выбранного месяца для каждого сотрудника отдельно.</p>
+        </div>
+        <div className="schedule-grand schedule-grand-net">
+          <span>К выплате всего</span>
+          <strong>{tenge(netPay)} ₸</strong>
+        </div>
+      </div>
+
+      {patternOpen ? (
+        <div className="export-modal-backdrop" onClick={() => setPatternOpen(false)}>
+          <div className="export-modal confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>График 2/2</h3>
+            <p className="muted small">
+              2 дня работа, 2 выходных. На рабочие дни ставится смена <strong>{LEGACY_START}–{LEGACY_END}</strong> (потом
+              можно изменить по дате).
+            </p>
+            <label className="schedule-modal-field">
+              Сотрудник
+              <select value={patternEmp} onChange={(e) => setPatternEmp(e.target.value)}>
+                <option value="">—</option>
+                {(data.employees || []).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="schedule-modal-field">
+              Первый рабочий день
+              <input type="date" value={patternStart} onChange={(e) => setPatternStart(e.target.value)} />
+            </label>
+            <label className="schedule-modal-field">
+              Дней подряд
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={patternDays}
+                onChange={(e) => setPatternDays(Number(e.target.value) || 28)}
+              />
+            </label>
+            <div className="export-actions">
+              <button type="button" className="ghost-btn" onClick={() => setPatternOpen(false)}>
+                Отмена
+              </button>
+              <button type="button" className="btn btn-dark" onClick={applyPattern22} disabled={!patternEmp || !patternStart}>
+                Применить
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {dayModal ? (
+        <div className="export-modal-backdrop" onClick={closeDayModal}>
+          <div className="export-modal schedule-day-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{formatRuDate(dayModal.date)}</h3>
+            <p className="muted small">
+              {dayModal.readOnly ? 'Смены на этот день' : 'Сотрудник и часы по каждому интервалу'}
+            </p>
+
+            {dayModal.readOnly && dayModal.rows.length === 0 ? (
+              <p className="muted">На этот день смен нет.</p>
+            ) : null}
+
+            <div className="schedule-day-modal-rows">
+              {dayModal.rows.map((row, idx) => (
+                <div key={row.id} className="schedule-day-modal-row">
+                  {!dayModal.readOnly ? (
+                    <button
+                      type="button"
+                      className="ghost-btn schedule-day-modal-remove"
+                      onClick={() => removeDayModalRow(idx)}
+                      aria-label="Удалить интервал"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                  <label className="schedule-day-modal-field">
+                    Сотрудник
+                    <select
+                      value={row.employeeId}
+                      disabled={dayModal.readOnly}
+                      onChange={(e) => updateDayModalRow(idx, { employeeId: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      {(data.employees || []).map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="schedule-day-modal-times">
+                    <label>
+                      С
+                      <input
+                        type="time"
+                        value={row.start}
+                        disabled={dayModal.readOnly}
+                        onChange={(e) => updateDayModalRow(idx, { start: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      До
+                      <input
+                        type="time"
+                        value={row.end}
+                        disabled={dayModal.readOnly}
+                        onChange={(e) => updateDayModalRow(idx, { end: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {!dayModal.readOnly ? (
+              <button type="button" className="ghost-btn schedule-day-modal-add" onClick={addDayModalRow}>
+                + Интервал
+              </button>
+            ) : null}
+
+            {dayModalError ? <p className="error small">{dayModalError}</p> : null}
+
+            <div className="export-actions">
+              <button type="button" className="ghost-btn" onClick={closeDayModal}>
+                {dayModal.readOnly ? 'Закрыть' : 'Отмена'}
+              </button>
+              {!dayModal.readOnly ? (
+                <button type="button" className="btn btn-dark" onClick={saveDayModal}>
+                  Сохранить день
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+export default ScheduleView

@@ -1,0 +1,16 @@
+{
+  "name": "e-Bar — ТехКарты",
+  "short_name": "e-Bar",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4f0",
+  "theme_color": "#f5f4f0",
+  "icons": [
+    {
+      "src": "/e-Bar.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
