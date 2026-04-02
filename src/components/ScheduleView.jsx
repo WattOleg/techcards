@@ -13,6 +13,11 @@ import {
 } from '../utils/scheduleMath'
 
 const PRESET_COLORS = ['#f0d4cf', '#c8d8b2', '#b8d4e8', '#e8d4f5', '#ffe4b3', '#ffd4dc', '#d4e8d4', '#e0d4c8']
+const SHIFT_TEMPLATES = {
+  morning: { label: 'Утро', start: '09:00', end: '17:00' },
+  evening: { label: 'Вечер', start: '15:00', end: '23:00' },
+  full: { label: 'Полная', start: '09:00', end: '23:00' },
+}
 
 /** Для старых записей без своих времён в JSON */
 const LEGACY_START = '09:00'
@@ -51,6 +56,10 @@ function ScheduleView({
   const [patternEmp, setPatternEmp] = useState('')
   const [patternStart, setPatternStart] = useState('')
   const [patternDays, setPatternDays] = useState(28)
+  const [patternMode, setPatternMode] = useState('22')
+  const [patternTemplate, setPatternTemplate] = useState('full')
+  const [scheduleTab, setScheduleTab] = useState('calendar')
+  const [payrollEmployeeFilter, setPayrollEmployeeFilter] = useState('')
   const [dayModal, setDayModal] = useState(null)
   const [dayModalError, setDayModalError] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -143,6 +152,10 @@ function ScheduleView({
     })
     return { employeePayouts: rows, netPay: totalNetTenge }
   }, [data.employees, totals, shortageCents, monthBonuses])
+  const payoutById = useMemo(
+    () => new Map(employeePayouts.map((row) => [row.id, row])),
+    [employeePayouts],
+  )
 
   const setShortageForMonth = (raw) => {
     const sm = { ...shortageMap }
@@ -314,6 +327,7 @@ function ScheduleView({
   const applyPattern22 = () => {
     if (!patternEmp || !patternStart) return
     const num = Math.min(120, Math.max(1, Number(patternDays) || 28))
+    const preset = SHIFT_TEMPLATES[patternTemplate] || SHIFT_TEMPLATES.full
     let shifts = [...(data.shifts || [])]
     shifts = shifts.filter((s) => {
       if (s.employeeId !== patternEmp) return true
@@ -326,14 +340,14 @@ function ScheduleView({
     })
     let d = patternStart
     for (let i = 0; i < num; i++) {
-      const inWork = i % 4 < 2
+      const inWork = patternMode === 'daily' ? true : i % 4 < 2
       if (inWork) {
         shifts.push({
           id: newShiftId(),
           date: d,
           employeeId: patternEmp,
-          start: LEGACY_START,
-          end: LEGACY_END,
+          start: preset.start,
+          end: preset.end,
         })
       }
       d = addDaysYmd(d, 1)
@@ -343,6 +357,9 @@ function ScheduleView({
   }
 
   const monthLabel = new Date(year, month, 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' })
+  const todayYmd = new Date().toISOString().slice(0, 10)
+  const weekStart = addDaysYmd(todayYmd, -((new Date(todayYmd).getDay() + 6) % 7))
+  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysYmd(weekStart, i)), [weekStart])
 
   const buildSchedulePdfPayload = useCallback(() => {
     const calendarRows = dates.map((ymd) => {
@@ -447,6 +464,25 @@ function ScheduleView({
       {saveError ? <p className="error">{saveError}</p> : null}
       {pdfError ? <p className="error">{pdfError}</p> : null}
 
+      <div className="schedule-view-tabs">
+        <button
+          type="button"
+          className={`chip ${scheduleTab === 'calendar' ? 'chip-active' : ''}`}
+          onClick={() => setScheduleTab('calendar')}
+        >
+          Календарь
+        </button>
+        <button
+          type="button"
+          className={`chip ${scheduleTab === 'payroll' ? 'chip-active' : ''}`}
+          onClick={() => setScheduleTab('payroll')}
+        >
+          К выплате
+        </button>
+      </div>
+
+      {scheduleTab === 'calendar' ? (
+        <>
       <p className="muted small schedule-hint">
         Нажмите на <strong>дату</strong> в списке ниже, чтобы задать смены и часы на этот день.
       </p>
@@ -516,11 +552,24 @@ function ScheduleView({
               setPatternOpen(true)
             }}
           >
-            Заполнить 2/2
+            Шаблоны смен
           </button>
-          <span className="muted small schedule-pattern-hint">интервалы {LEGACY_START}–{LEGACY_END}</span>
+          <span className="muted small schedule-pattern-hint">утро / вечер / полная и массовое применение</span>
         </div>
       ) : null}
+
+      <div className="schedule-week-strip">
+        {weekDates.map((ymd) => {
+          const count = (shiftsByDate.get(ymd) || []).length
+          return (
+            <button key={ymd} type="button" className="schedule-week-day" onClick={() => openDayModal(ymd)}>
+              <span className="schedule-week-wd">{weekdayShortRu(ymd)}</span>
+              <span className="schedule-week-num">{ymd.slice(-2)}</span>
+              <span className="schedule-week-count">{count || '—'}</span>
+            </button>
+          )
+        })}
+      </div>
 
       <div className="schedule-month-nav">
         <button
@@ -610,9 +659,23 @@ function ScheduleView({
           )
         })}
       </div>
+        </>
+      ) : null}
 
+      {scheduleTab === 'payroll' ? (
       <div className="schedule-totals">
         <h4>Итого за месяц</h4>
+        <label className="schedule-modal-field">
+          Фильтр по сотруднику
+          <select value={payrollEmployeeFilter} onChange={(e) => setPayrollEmployeeFilter(e.target.value)}>
+            <option value="">Все</option>
+            {(data.employees || []).map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="schedule-totals-grid">
           <div className="schedule-total-row schedule-totals-head" aria-hidden>
             <span className="schedule-total-dot schedule-total-dot-spacer" />
@@ -621,18 +684,20 @@ function ScheduleView({
             <span className="muted schedule-total-col-num">Начислено</span>
             <span className="muted schedule-total-col-num">К выплате</span>
           </div>
-          {(data.employees || []).map((e, i) => {
-            const row = employeePayouts[i] || { hours: 0, gross: 0, deduction: 0, bonus: 0, net: 0 }
-            return (
-              <div key={e.id} className="schedule-total-row">
-                <span className="schedule-total-dot" style={{ background: e.color }} />
-                <span className="schedule-total-name">{e.name}</span>
-                <strong className="schedule-total-col-num">{row.hours} ч</strong>
-                <strong className="schedule-total-col-num">{tenge(row.gross)} ₸</strong>
-                <strong className="schedule-total-col-num schedule-total-net">{tenge(row.net)} ₸</strong>
-              </div>
-            )
-          })}
+          {(data.employees || [])
+            .filter((e) => !payrollEmployeeFilter || e.id === payrollEmployeeFilter)
+            .map((e) => {
+              const row = payoutById.get(e.id) || { hours: 0, gross: 0, deduction: 0, bonus: 0, net: 0 }
+              return (
+                <div key={e.id} className="schedule-total-row">
+                  <span className="schedule-total-dot" style={{ background: e.color }} />
+                  <span className="schedule-total-name">{e.name}</span>
+                  <strong className="schedule-total-col-num">{row.hours} ч</strong>
+                  <strong className="schedule-total-col-num">{tenge(row.gross)} ₸</strong>
+                  <strong className="schedule-total-col-num schedule-total-net">{tenge(row.net)} ₸</strong>
+                </div>
+              )
+            })}
         </div>
         <div className="schedule-grand">
           <span>Всего часов</span>
@@ -686,15 +751,32 @@ function ScheduleView({
           <strong>{tenge(netPay)} ₸</strong>
         </div>
       </div>
+      ) : null}
 
       {patternOpen ? (
         <div className="export-modal-backdrop" onClick={() => setPatternOpen(false)}>
           <div className="export-modal confirm-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>График 2/2</h3>
+            <h3>Шаблоны смен</h3>
             <p className="muted small">
-              2 дня работа, 2 выходных. На рабочие дни ставится смена <strong>{LEGACY_START}–{LEGACY_END}</strong> (потом
-              можно изменить по дате).
+              Применяется для сотрудника в выбранном диапазоне дней.
             </p>
+            <label className="schedule-modal-field">
+              Режим
+              <select value={patternMode} onChange={(e) => setPatternMode(e.target.value)}>
+                <option value="22">2/2</option>
+                <option value="daily">Каждый день</option>
+              </select>
+            </label>
+            <label className="schedule-modal-field">
+              Шаблон
+              <select value={patternTemplate} onChange={(e) => setPatternTemplate(e.target.value)}>
+                {Object.entries(SHIFT_TEMPLATES).map(([key, t]) => (
+                  <option key={key} value={key}>
+                    {t.label} ({t.start}-{t.end})
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="schedule-modal-field">
               Сотрудник
               <select value={patternEmp} onChange={(e) => setPatternEmp(e.target.value)}>

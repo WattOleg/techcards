@@ -25,35 +25,37 @@ function writeOffline(key, value) {
 }
 
 async function requestJson(url, options) {
-  let res
-  try {
-    res = await fetch(url, options)
-  } catch {
-    throw new Error('Не удалось подключиться к серверу. Проверьте Apps Script deploy и доступ "Anyone".')
-  }
+  const method = String(options?.method || 'GET').toUpperCase()
+  const retries = method === 'GET' ? 2 : 0
+  let lastError = null
 
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    throw new Error(data.error || 'Ошибка ответа сервера')
-  }
-  if (data && data.error) {
-    throw new Error(data.error)
-  }
-  return data
-}
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    let res
+    try {
+      res = await fetch(url, options)
+    } catch (err) {
+      lastError = err
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
+        continue
+      }
+      throw new Error('Не удалось подключиться к серверу. Проверьте Apps Script deploy и доступ "Anyone".')
+    }
 
-function withTimeout(ms, signal) {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), ms)
-  const onAbort = () => controller.abort()
-  if (signal) signal.addEventListener('abort', onAbort, { once: true })
-  return {
-    signal: controller.signal,
-    clear: () => {
-      clearTimeout(timeout)
-      if (signal) signal.removeEventListener('abort', onAbort)
-    },
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      if (attempt < retries && res.status >= 500) {
+        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
+        continue
+      }
+      throw new Error(data.error || 'Ошибка ответа сервера')
+    }
+    if (data && data.error) {
+      throw new Error(data.error)
+    }
+    return data
   }
+  throw lastError || new Error('Ошибка сети')
 }
 
 const mockCards = [

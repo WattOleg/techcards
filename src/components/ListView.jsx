@@ -4,6 +4,8 @@ import InfoSectionBody from './InfoSectionBody'
 import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
 
+const INFO_SECTION_IDS = ['regulations', 'appearance', 'behavior', 'rights']
+
 function ListView({
   cards,
   categories,
@@ -28,7 +30,6 @@ function ListView({
   const [selectedIds, setSelectedIds] = useState([])
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
-  const [sectionMenuOpen, setSectionMenuOpen] = useState(false)
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -130,71 +131,77 @@ function ListView({
   }
 
   const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label || 'ТехКарты'
+  const activeMainSection = activeSection === 'techcards' || activeSection === 'schedule' ? activeSection : 'regulations'
   const infoBlock =
     activeSection !== 'techcards' && activeSection !== 'schedule' ? sectionContent[activeSection] : null
 
   return (
     <div className="view list-view">
-      <header className="list-header">
-        <div className="title-menu-wrap">
-          <button
-            type="button"
-            className="title-menu-btn"
-            onClick={() => setSectionMenuOpen((prev) => !prev)}
-            aria-expanded={sectionMenuOpen}
-          >
-            <img src="/e-Bar.png" alt="e-Bar Cafe De Ghouli" className="title-logo" />
-            <h1>{activeSectionLabel}</h1>
-            <span className="title-menu-caret">▾</span>
-          </button>
-          {sectionMenuOpen ? (
-            <div className="title-menu-dropdown">
-              {sections.map((item) => (
+      <div className="list-sticky-zone">
+        <header className="list-header">
+          <div className="title-menu-wrap">
+            <div className="title-menu-btn">
+              <img src="/e-Bar.png" alt="e-Bar Cafe De Ghouli" className="title-logo" />
+              <h1>{activeSectionLabel}</h1>
+            </div>
+          </div>
+          <div className="list-header-badges">
+            {visitCount != null ? (
+              <div
+                className="app-visit-counter"
+                aria-live="polite"
+                aria-label={`Просмотров приложения: ${visitCount}`}
+              >
+                <svg
+                  className="app-visit-eye"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span>{visitCount.toLocaleString('ru-RU')}</span>
+              </div>
+            ) : null}
+            <span className="count-badge">{activeSection === 'techcards' ? filtered.length : '•'}</span>
+          </div>
+        </header>
+
+        {activeSection === 'techcards' ? (
+          <SearchBar
+            query={query}
+            onQueryChange={setQuery}
+            category={category}
+            onCategoryChange={setCategory}
+            categories={displayCategories}
+          />
+        ) : null}
+
+        {activeMainSection === 'regulations' ? (
+          <div className="reg-subtabs">
+            {sections
+              .filter((item) => INFO_SECTION_IDS.includes(item.id))
+              .map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  className={`title-menu-item ${item.id === activeSection ? 'is-active' : ''}`}
-                  onClick={() => {
-                    onSectionChange(item.id)
-                    setSectionMenuOpen(false)
-                  }}
+                  className={`chip ${activeSection === item.id ? 'chip-active' : ''}`}
+                  onClick={() => onSectionChange(item.id)}
                 >
-                  <span>{item.label}</span>
-                  <span className="menu-item-arrow">→</span>
+                  {item.label}
                 </button>
               ))}
-            </div>
-          ) : null}
-        </div>
-        <div className="list-header-badges">
-          {visitCount != null ? (
-            <div
-              className="app-visit-counter"
-              aria-live="polite"
-              aria-label={`Просмотров приложения: ${visitCount}`}
-            >
-              <svg
-                className="app-visit-eye"
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <span>{visitCount.toLocaleString('ru-RU')}</span>
-            </div>
-          ) : null}
-          <span className="count-badge">{activeSection === 'techcards' ? filtered.length : '•'}</span>
-        </div>
-      </header>
+          </div>
+        ) : null}
+      </div>
 
       {activeSection === 'schedule' && schedule ? <ScheduleView {...schedule} /> : null}
 
@@ -213,14 +220,6 @@ function ListView({
         </section>
       ) : activeSection === 'schedule' ? null : (
         <>
-          <SearchBar
-            query={query}
-            onQueryChange={setQuery}
-            category={category}
-            onCategoryChange={setCategory}
-            categories={displayCategories}
-          />
-
           <div className="toolbar-row">
             <button type="button" className="refresh-btn" onClick={onCreate}>
               Создать
@@ -327,6 +326,30 @@ function ListView({
           ) : null}
         </>
       )}
+
+      <nav className="bottom-tabs" aria-label="Разделы">
+        <button
+          type="button"
+          className={`bottom-tab ${activeMainSection === 'techcards' ? 'is-active' : ''}`}
+          onClick={() => onSectionChange('techcards')}
+        >
+          ТехКарты
+        </button>
+        <button
+          type="button"
+          className={`bottom-tab ${activeMainSection === 'schedule' ? 'is-active' : ''}`}
+          onClick={() => onSectionChange('schedule')}
+        >
+          График
+        </button>
+        <button
+          type="button"
+          className={`bottom-tab ${activeMainSection === 'regulations' ? 'is-active' : ''}`}
+          onClick={() => onSectionChange('regulations')}
+        >
+          Регламенты
+        </button>
+      </nav>
     </div>
   )
 }
