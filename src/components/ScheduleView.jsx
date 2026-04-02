@@ -49,6 +49,7 @@ function softTint(hex, alpha = 0.2) {
 
 function rateMode(row) {
   if (!row) return 'from'
+  if (row.mode === 'from' || row.mode === 'day' || row.mode === 'period') return row.mode
   if (!row.to) return 'from'
   if (row.to === row.from) return 'day'
   return 'period'
@@ -238,7 +239,14 @@ function ScheduleView({
   const updateRatePeriod = (id, index, patch) => {
     const emp = (data.employees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
-    const next = current.map((r, i) => (i === index ? { ...r, ...patch } : r))
+    const next = current.map((r, i) => {
+      if (i !== index) return r
+      const merged = { ...r, ...patch }
+      if (merged.mode === 'period' && merged.to && merged.to < merged.from) merged.to = merged.from
+      if (merged.mode === 'day') merged.to = merged.from
+      if (merged.mode === 'from') merged.to = null
+      return merged
+    })
     updateEmployee(id, { rateHistory: next })
   }
 
@@ -247,9 +255,9 @@ function ScheduleView({
     const current = normalizeRateHistory(emp?.rateHistory)
     const next = current.map((r, i) => {
       if (i !== index) return r
-      if (mode === 'from') return { ...r, to: null }
-      if (mode === 'day') return { ...r, to: r.from }
-      return { ...r, to: r.to && r.to >= r.from ? r.to : r.from }
+      if (mode === 'from') return { ...r, mode, to: null }
+      if (mode === 'day') return { ...r, mode, to: r.from }
+      return { ...r, mode, to: r.to && r.to >= r.from ? r.to : r.from }
     })
     updateEmployee(id, { rateHistory: next })
   }

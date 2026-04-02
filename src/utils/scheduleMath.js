@@ -141,13 +141,23 @@ export function normalizeRateHistory(rateHistory) {
     .map((r) => {
       const from = String(r?.from || '').trim()
       const toRaw = r?.to == null ? '' : String(r.to).trim()
-      const to = toRaw || null
+      let to = toRaw || null
+      const modeRaw = String(r?.mode || '').trim()
       const rate = Number(r?.rate)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
       if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
-      if (to && to < from) return null
+      if (to && to < from) to = from
       if (!Number.isFinite(rate) || rate < 0) return null
-      return { from, to, rate: Math.round(rate) }
+      let mode = modeRaw === 'from' || modeRaw === 'day' || modeRaw === 'period' ? modeRaw : ''
+      if (!mode) {
+        if (!to) mode = 'from'
+        else if (to === from) mode = 'day'
+        else mode = 'period'
+      }
+      if (mode === 'from') to = null
+      if (mode === 'day') to = from
+      if (mode === 'period' && !to) to = from
+      return { from, to, mode, rate: Math.round(rate) }
     })
     .filter(Boolean)
     .sort((a, b) => {

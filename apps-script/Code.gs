@@ -564,12 +564,22 @@ function updateSchedule(body) {
                   var from = String((r && r.from) || '').trim()
                   var toRaw = r && r.to != null ? String(r.to).trim() : ''
                   var to = toRaw || ''
+                  var modeRaw = String((r && r.mode) || '').trim()
+                  var mode = modeRaw === 'from' || modeRaw === 'day' || modeRaw === 'period' ? modeRaw : ''
                   var rate = Number(r && r.rate)
                   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from)) return null
                   if (to && !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(to)) return null
-                  if (to && to < from) return null
+                  if (to && to < from) to = from
                   if (isNaN(rate) || rate < 0) return null
-                  return { from: from, to: to || null, rate: Math.round(rate) }
+                  if (!mode) {
+                    if (!to) mode = 'from'
+                    else if (to === from) mode = 'day'
+                    else mode = 'period'
+                  }
+                  if (mode === 'from') to = ''
+                  if (mode === 'day') to = from
+                  if (mode === 'period' && !to) to = from
+                  return { from: from, to: to || null, mode: mode, rate: Math.round(rate) }
                 })
                 .filter(Boolean)
             : []
