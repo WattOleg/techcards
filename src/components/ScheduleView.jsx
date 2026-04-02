@@ -85,6 +85,12 @@ function ScheduleView({
 
   const dates = useMemo(() => monthDateStrings(year, month), [year, month])
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  const monthEmployees = useMemo(() => {
+    const byMonth = data.employeesByMonth || {}
+    const list = byMonth[monthKey]
+    if (Array.isArray(list)) return list
+    return []
+  }, [data.employeesByMonth, monthKey])
 
   const shiftsByDate = useMemo(() => {
     const map = new Map()
@@ -104,9 +110,9 @@ function ScheduleView({
   }, [data.shifts])
 
   const totals = useMemo(() => {
-    const empById = new Map((data.employees || []).map((e) => [e.id, e]))
+    const empById = new Map((monthEmployees || []).map((e) => [e.id, e]))
     const byEmp = {}
-    ;(data.employees || []).forEach((e) => {
+    ;(monthEmployees || []).forEach((e) => {
       byEmp[e.id] = { hours: 0, pay: 0 }
     })
     ;(data.shifts || []).forEach((s) => {
@@ -125,7 +131,7 @@ function ScheduleView({
       t.pay = Math.round(t.pay)
     })
     return byEmp
-  }, [data, dates])
+  }, [data.shifts, monthEmployees, dates])
 
   const grandTotal = useMemo(() => {
     let pay = 0
@@ -148,7 +154,7 @@ function ScheduleView({
       : {}
 
   const { employeePayouts, netPay } = useMemo(() => {
-    const emps = data.employees || []
+    const emps = monthEmployees || []
     const grossCents = emps.map((e) => {
       const t = totals[e.id] || { hours: 0, pay: 0 }
       return tenge(t.pay || 0) * 100
@@ -173,7 +179,7 @@ function ScheduleView({
       }
     })
     return { employeePayouts: rows, netPay: totalNetTenge }
-  }, [data.employees, totals, shortageCents, monthBonuses])
+  }, [monthEmployees, totals, shortageCents, monthBonuses])
   const payoutById = useMemo(
     () => new Map(employeePayouts.map((row) => [row.id, row])),
     [employeePayouts],
@@ -213,31 +219,36 @@ function ScheduleView({
     onChange({ ...data, [key]: val })
   }
 
+  const setMonthEmployees = (nextEmployees) => {
+    const all = { ...(data.employeesByMonth || {}) }
+    const clean = Array.isArray(nextEmployees) ? nextEmployees : []
+    if (clean.length === 0) delete all[monthKey]
+    else all[monthKey] = clean
+    onChange({ ...data, employeesByMonth: all })
+  }
+
   const addEmployee = () => {
-    const color = PRESET_COLORS[(data.employees || []).length % PRESET_COLORS.length]
+    const color = PRESET_COLORS[(monthEmployees || []).length % PRESET_COLORS.length]
     const next = [
-      ...(data.employees || []),
+      ...(monthEmployees || []),
       { id: newEmployeeId(), name: 'Сотрудник', color, hourlyRate: 300 },
     ]
-    setField('employees', next)
+    setMonthEmployees(next)
   }
 
   const updateEmployee = (id, patch) => {
-    setField(
-      'employees',
-      (data.employees || []).map((e) => (e.id === id ? { ...e, ...patch } : e)),
-    )
+    setMonthEmployees((monthEmployees || []).map((e) => (e.id === id ? { ...e, ...patch } : e)))
   }
 
   const addRatePeriod = (id) => {
     const today = new Date().toISOString().slice(0, 10)
-    const emp = (data.employees || []).find((e) => e.id === id)
+    const emp = (monthEmployees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
     updateEmployee(id, { rateHistory: [...current, { from: today, to: today, rate: Number(emp?.hourlyRate) || 0 }] })
   }
 
   const updateRatePeriod = (id, index, patch) => {
-    const emp = (data.employees || []).find((e) => e.id === id)
+    const emp = (monthEmployees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
     const next = current.map((r, i) => {
       if (i !== index) return r
@@ -251,7 +262,7 @@ function ScheduleView({
   }
 
   const setRatePeriodMode = (id, index, mode) => {
-    const emp = (data.employees || []).find((e) => e.id === id)
+    const emp = (monthEmployees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
     const next = current.map((r, i) => {
       if (i !== index) return r
@@ -263,7 +274,7 @@ function ScheduleView({
   }
 
   const removeRatePeriod = (id, index) => {
-    const emp = (data.employees || []).find((e) => e.id === id)
+    const emp = (monthEmployees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
     updateEmployee(id, { rateHistory: current.filter((_, i) => i !== index) })
   }
@@ -278,8 +289,11 @@ function ScheduleView({
     })
     onChange({
       ...data,
-      employees: (data.employees || []).filter((e) => e.id !== id),
-      shifts: (data.shifts || []).filter((s) => s.employeeId !== id),
+      employeesByMonth: {
+        ...(data.employeesByMonth || {}),
+        [monthKey]: (monthEmployees || []).filter((e) => e.id !== id),
+      },
+      shifts: (data.shifts || []).filter((s) => !(s.employeeId === id && String(s.date || '').startsWith(monthKey))),
       bonusesByMonth: nextBonuses,
     })
   }
@@ -287,7 +301,7 @@ function ScheduleView({
   const openDayModal = (ymd) => {
     setDayModalError('')
     const existing = (data.shifts || []).filter((s) => s.date === ymd)
-    const emps = data.employees || []
+    const emps = monthEmployees || []
     const firstId = emps[0]?.id || ''
 
     if (existing.length === 0) {
@@ -341,7 +355,7 @@ function ScheduleView({
   const addDayModalRow = () => {
     setDayModal((prev) => {
       if (!prev || prev.readOnly) return prev
-      const firstId = (data.employees || [])[0]?.id || ''
+      const firstId = (monthEmployees || [])[0]?.id || ''
       return {
         ...prev,
         rows: [
@@ -426,7 +440,7 @@ function ScheduleView({
     const calendarRows = dates.map((ymd) => {
       const dayShifts = shiftsByDate.get(ymd) || []
       const lines = dayShifts.map((s) => {
-        const emp = (data.employees || []).find((x) => x.id === s.employeeId)
+        const emp = (monthEmployees || []).find((x) => x.id === s.employeeId)
         const h = shiftHours(s, LEGACY_START, LEGACY_END)
         const range = formatShiftRange(s, LEGACY_START, LEGACY_END)
         return `${emp?.name || '?'}: ${range}, ${h} ч`
@@ -436,7 +450,7 @@ function ScheduleView({
         shiftsText: lines.length ? lines.join('\n') : '—',
       }
     })
-    const summaryRows = (data.employees || []).map((e, i) => {
+    const summaryRows = (monthEmployees || []).map((e, i) => {
       const row = employeePayouts[i] || { hours: 0, gross: 0, net: 0 }
       return {
         name: e.name,
@@ -460,7 +474,7 @@ function ScheduleView({
   }, [
     dates,
     shiftsByDate,
-    data.employees,
+    monthEmployees,
     employeePayouts,
     grandTotal.hours,
     grandTotal.pay,
@@ -557,11 +571,11 @@ function ScheduleView({
             </button>
           ) : null}
         </div>
-        {(data.employees || []).length === 0 ? (
+        {(monthEmployees || []).length === 0 ? (
           <p className="muted">Добавьте сотрудников, затем откройте день в календаре.</p>
         ) : null}
         <div className="schedule-emp-list">
-          {(data.employees || []).map((e) => (
+          {(monthEmployees || []).map((e) => (
             <div key={e.id} className="schedule-emp-card" style={{ borderColor: e.color }}>
               <span className="schedule-color-swatch" style={{ background: e.color }} aria-hidden />
               <div className="schedule-emp-fields">
@@ -658,7 +672,7 @@ function ScheduleView({
             className="ghost-btn"
             onClick={() => {
               if (!patternStart && dates[0]) setPatternStart(dates[0])
-              if (!patternEmp && (data.employees || [])[0]) setPatternEmp(data.employees[0].id)
+              if (!patternEmp && (monthEmployees || [])[0]) setPatternEmp(monthEmployees[0].id)
               setPatternOpen(true)
             }}
           >
@@ -673,7 +687,7 @@ function ScheduleView({
           const dayShifts = shiftsByDate.get(ymd) || []
           const count = dayShifts.length
           const firstShift = dayShifts[0]
-          const firstEmp = (data.employees || []).find((x) => x.id === firstShift?.employeeId)
+          const firstEmp = (monthEmployees || []).find((x) => x.id === firstShift?.employeeId)
           const bg = count > 0 ? softTint(firstEmp?.color, 0.24) : '#f7f6f3'
           const border = count > 0 ? softTint(firstEmp?.color, 0.5) : '#eceae5'
           const { main, muted } = chipTextColors(firstEmp?.color || '#f3f2ef')
@@ -743,7 +757,7 @@ function ScheduleView({
               </div>
               <div className="schedule-day-chips">
                 {dayShifts.map((s) => {
-                  const emp = (data.employees || []).find((x) => x.id === s.employeeId)
+                  const emp = (monthEmployees || []).find((x) => x.id === s.employeeId)
                   const h = shiftHours(s, LEGACY_START, LEGACY_END)
                   const range = formatShiftRange(s, LEGACY_START, LEGACY_END)
                   const key = s.id || `${s.date}-${s.employeeId}-${range}`
@@ -796,7 +810,7 @@ function ScheduleView({
           Фильтр по сотруднику
           <select value={payrollEmployeeFilter} onChange={(e) => setPayrollEmployeeFilter(e.target.value)}>
             <option value="">Все</option>
-            {(data.employees || []).map((e) => (
+            {(monthEmployees || []).map((e) => (
               <option key={e.id} value={e.id}>
                 {e.name}
               </option>
@@ -811,7 +825,7 @@ function ScheduleView({
             <span className="muted schedule-total-col-num">Начислено</span>
             <span className="muted schedule-total-col-num">К выплате</span>
           </div>
-          {(data.employees || [])
+          {(monthEmployees || [])
             .filter((e) => !payrollEmployeeFilter || e.id === payrollEmployeeFilter)
             .map((e) => {
               const row = payoutById.get(e.id) || { hours: 0, gross: 0, deduction: 0, bonus: 0, net: 0 }
@@ -854,7 +868,7 @@ function ScheduleView({
         <div className="schedule-shortage-block">
           <h5 className="schedule-bonus-title">Бонус за месяц</h5>
           <div className="schedule-bonus-grid">
-            {(data.employees || []).map((e) => (
+            {(monthEmployees || []).map((e) => (
               <label key={e.id} className="schedule-bonus-row">
                 <span className="schedule-bonus-name">{e.name}</span>
                 <input
@@ -908,7 +922,7 @@ function ScheduleView({
               Сотрудник
               <select value={patternEmp} onChange={(e) => setPatternEmp(e.target.value)}>
                 <option value="">—</option>
-                {(data.employees || []).map((e) => (
+                {(monthEmployees || []).map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name}
                   </option>
@@ -974,7 +988,7 @@ function ScheduleView({
                       onChange={(e) => updateDayModalRow(idx, { employeeId: e.target.value })}
                     >
                       <option value="">—</option>
-                      {(data.employees || []).map((e) => (
+                      {(monthEmployees || []).map((e) => (
                         <option key={e.id} value={e.id}>
                           {e.name}
                         </option>

@@ -51,6 +51,7 @@ const DEFAULT_SCHEDULE = {
   defaultStart: '09:00',
   defaultEnd: '23:00',
   employees: [],
+  employeesByMonth: {},
   shifts: [],
   shortageByMonth: {},
   bonusesByMonth: {},
@@ -67,6 +68,10 @@ function normalizeScheduleServer(s) {
     raw.bonusesByMonth && typeof raw.bonusesByMonth === 'object' && !Array.isArray(raw.bonusesByMonth)
       ? { ...raw.bonusesByMonth }
       : {}
+  const employeesByMonth =
+    raw.employeesByMonth && typeof raw.employeesByMonth === 'object' && !Array.isArray(raw.employeesByMonth)
+      ? { ...raw.employeesByMonth }
+      : {}
   return {
     ...DEFAULT_SCHEDULE,
     ...raw,
@@ -80,6 +85,7 @@ function normalizeScheduleServer(s) {
     })),
     shortageByMonth,
     bonusesByMonth,
+    employeesByMonth,
   }
 }
 const DEFAULT_SECTION_CONTENT = {

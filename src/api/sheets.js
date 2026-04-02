@@ -266,6 +266,7 @@ const mockSchedule = {
   employees: [
     { id: 'e1', name: 'Пример', color: '#f0d4cf', hourlyRate: 300 },
   ],
+  employeesByMonth: {},
   shifts: [],
   shortageByMonth: {},
   bonusesByMonth: {},

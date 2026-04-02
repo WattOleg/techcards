@@ -329,6 +329,7 @@ function getDefaultScheduleData_() {
     defaultStart: '09:00',
     defaultEnd: '23:00',
     employees: [],
+    employeesByMonth: {},
     shifts: [],
     shortageByMonth: {},
     bonusesByMonth: {},
@@ -404,7 +405,12 @@ function migrateLegacyScheduleIfNeeded_(ss) {
     if (bonusesByMonth[mk] && typeof bonusesByMonth[mk] === 'object' && !Array.isArray(bonusesByMonth[mk])) {
       bm[mk] = bonusesByMonth[mk]
     }
-    writeMonthScheduleSheet_(ss, mk, { shifts: byMonth[mk], shortageByMonth: sm, bonusesByMonth: bm })
+    writeMonthScheduleSheet_(ss, mk, {
+      employees: Array.isArray(parsed.employees) ? parsed.employees : [],
+      shifts: byMonth[mk],
+      shortageByMonth: sm,
+      bonusesByMonth: bm,
+    })
   }
   for (var key in shortageByMonth) {
     if (!shortageByMonth.hasOwnProperty(key)) continue
@@ -415,19 +421,30 @@ function migrateLegacyScheduleIfNeeded_(ss) {
     if (bonusesByMonth[key] && typeof bonusesByMonth[key] === 'object' && !Array.isArray(bonusesByMonth[key])) {
       bm[key] = bonusesByMonth[key]
     }
-    writeMonthScheduleSheet_(ss, key, { shifts: [], shortageByMonth: sm, bonusesByMonth: bm })
+    writeMonthScheduleSheet_(ss, key, {
+      employees: Array.isArray(parsed.employees) ? parsed.employees : [],
+      shifts: [],
+      shortageByMonth: sm,
+      bonusesByMonth: bm,
+    })
   }
   for (var bkey in bonusesByMonth) {
     if (!bonusesByMonth.hasOwnProperty(bkey)) continue
     if (byMonth[bkey] || shortageByMonth[bkey] !== undefined) continue
     const bm = {}
     bm[bkey] = bonusesByMonth[bkey]
-    writeMonthScheduleSheet_(ss, bkey, { shifts: [], shortageByMonth: {}, bonusesByMonth: bm })
+    writeMonthScheduleSheet_(ss, bkey, {
+      employees: Array.isArray(parsed.employees) ? parsed.employees : [],
+      shifts: [],
+      shortageByMonth: {},
+      bonusesByMonth: bm,
+    })
   }
   const nextGlobal = {
     defaultStart: parsed.defaultStart || '09:00',
     defaultEnd: parsed.defaultEnd || '23:00',
     employees: Array.isArray(parsed.employees) ? parsed.employees : [],
+    employeesByMonth: {},
     shifts: [],
     shortageByMonth: {},
     bonusesByMonth: {},
@@ -448,11 +465,12 @@ function writeMonthScheduleSheet_(ss, monthKey, payload) {
 
 function readMonthSheetPayload_(sheet) {
   const raw = sheet.getRange(1, 1).getValue()
-  if (!raw || !String(raw).trim()) return { shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
+  if (!raw || !String(raw).trim()) return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
   try {
     const p = JSON.parse(String(raw))
-    if (!p || typeof p !== 'object') return { shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
+    if (!p || typeof p !== 'object') return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
     return {
+      employees: Array.isArray(p.employees) ? p.employees : [],
       shifts: Array.isArray(p.shifts) ? p.shifts : [],
       shortageByMonth:
         p.shortageByMonth && typeof p.shortageByMonth === 'object' && !Array.isArray(p.shortageByMonth)
@@ -464,7 +482,7 @@ function readMonthSheetPayload_(sheet) {
           : {},
     }
   } catch (e) {
-    return { shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
+    return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
   }
 }
 
@@ -494,9 +512,14 @@ function getSchedule() {
   const allShifts = []
   const allShortage = {}
   const allBonuses = {}
+  const employeesByMonth = {}
   ss.getSheets().forEach(function (sh) {
     if (!isScheduleMonthSheetName_(sh.getName())) return
+    var mk = sh.getName().substring(SCHEDULE_MONTH_PREFIX.length)
     const part = readMonthSheetPayload_(sh)
+    if (Array.isArray(part.employees)) {
+      employeesByMonth[String(mk)] = part.employees
+    }
     part.shifts.forEach(function (s) {
       allShifts.push(s)
     })
@@ -522,6 +545,8 @@ function getSchedule() {
   schedule.shifts = allShifts
   schedule.shortageByMonth = allShortage
   schedule.bonusesByMonth = allBonuses
+  schedule.employeesByMonth = employeesByMonth
+  schedule.employees = []
   return jsonResponse({ schedule })
 }
 
@@ -592,6 +617,10 @@ function updateSchedule(body) {
           }
         })
       : [],
+    employeesByMonth:
+      next.employeesByMonth && typeof next.employeesByMonth === 'object' && !Array.isArray(next.employeesByMonth)
+        ? next.employeesByMonth
+        : {},
     shifts: Array.isArray(next.shifts)
       ? next.shifts.map(function (s) {
           return {
@@ -619,13 +648,17 @@ function updateSchedule(body) {
   for (var bk in bonusesByMonth) {
     if (bonusesByMonth.hasOwnProperty(bk)) monthKeys[String(bk)] = true
   }
+  for (var emk in safe.employeesByMonth) {
+    if (safe.employeesByMonth.hasOwnProperty(emk)) monthKeys[String(emk)] = true
+  }
 
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
   const globalSheet = getScheduleSheet_(ss)
   const globalPayload = {
     defaultStart: safe.defaultStart,
     defaultEnd: safe.defaultEnd,
-    employees: safe.employees,
+    employees: [],
+    employeesByMonth: {},
     shifts: [],
     shortageByMonth: {},
     bonusesByMonth: {},
@@ -643,7 +676,50 @@ function updateSchedule(body) {
     if (bonusesByMonth[mk] && typeof bonusesByMonth[mk] === 'object' && !Array.isArray(bonusesByMonth[mk])) {
       bm[mk] = bonusesByMonth[mk]
     }
-    writeMonthScheduleSheet_(ss, mk, { shifts: monthShifts, shortageByMonth: sm, bonusesByMonth: bm })
+    var monthEmployeesRaw =
+      safe.employeesByMonth[mk] && Array.isArray(safe.employeesByMonth[mk])
+        ? safe.employeesByMonth[mk]
+        : []
+    var monthEmployees = monthEmployeesRaw.map(function (e) {
+      var rates = Array.isArray(e.rateHistory)
+        ? e.rateHistory
+            .map(function (r) {
+              var from = String((r && r.from) || '').trim()
+              var toRaw = r && r.to != null ? String(r.to).trim() : ''
+              var to = toRaw || ''
+              var modeRaw = String((r && r.mode) || '').trim()
+              var mode = modeRaw === 'from' || modeRaw === 'day' || modeRaw === 'period' ? modeRaw : ''
+              var rate = Number(r && r.rate)
+              if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from)) return null
+              if (to && !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(to)) return null
+              if (to && to < from) to = from
+              if (isNaN(rate) || rate < 0) return null
+              if (!mode) {
+                if (!to) mode = 'from'
+                else if (to === from) mode = 'day'
+                else mode = 'period'
+              }
+              if (mode === 'from') to = ''
+              if (mode === 'day') to = from
+              if (mode === 'period' && !to) to = from
+              return { from: from, to: to || null, mode: mode, rate: Math.round(rate) }
+            })
+            .filter(Boolean)
+        : []
+      return {
+        id: String(e.id || '').trim() || Utilities.getUuid(),
+        name: String(e.name || '').trim() || 'Без имени',
+        color: String(e.color || '#f0d4cf').trim(),
+        hourlyRate: Number(e.hourlyRate) >= 0 ? Number(e.hourlyRate) : 0,
+        rateHistory: rates,
+      }
+    })
+    writeMonthScheduleSheet_(ss, mk, {
+      employees: monthEmployees,
+      shifts: monthShifts,
+      shortageByMonth: sm,
+      bonusesByMonth: bm,
+    })
   }
 
   var toDelete = []
