@@ -21,28 +21,53 @@ function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare
   const hasCandidate = photoIdx < photoCandidates.length
   const photoUrl = hasCandidate ? photoCandidates[photoIdx] : ''
 
+  const startSwipe = (x, y) => {
+    touchRef.current = { x, y, active: true }
+  }
+
+  const finishSwipe = (x, y) => {
+    const state = touchRef.current
+    touchRef.current.active = false
+    if (!state.active) return
+
+    const dx = x - state.x
+    const dy = y - state.y
+    const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
+
+    // Swipe left: close card and return to list.
+    if (mostlyHorizontal && dx < -52) onBack()
+  }
+
   const onTouchStart = (e) => {
     const t = e.changedTouches?.[0]
     if (!t) return
-    touchRef.current = { x: t.clientX, y: t.clientY, active: true }
+    startSwipe(t.clientX, t.clientY)
   }
 
   const onTouchEnd = (e) => {
     const t = e.changedTouches?.[0]
-    const state = touchRef.current
-    touchRef.current.active = false
-    if (!t || !state.active) return
+    if (!t) return
+    finishSwipe(t.clientX, t.clientY)
+  }
 
-    const dx = t.clientX - state.x
-    const dy = t.clientY - state.y
-    const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.4
+  const onPointerDown = (e) => {
+    if (e.pointerType !== 'touch') return
+    startSwipe(e.clientX, e.clientY)
+  }
 
-    // Swipe left: close card and return to list.
-    if (mostlyHorizontal && dx < -70) onBack()
+  const onPointerUp = (e) => {
+    if (e.pointerType !== 'touch') return
+    finishSwipe(e.clientX, e.clientY)
   }
 
   return (
-    <div className="view detail-view" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div
+      className="view detail-view"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+    >
       <div className="hero">
         {photoUrl ? (
           <img

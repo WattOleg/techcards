@@ -690,7 +690,7 @@ function ScheduleView({
       {scheduleTab === 'payroll' ? (
       <div className="schedule-totals">
         <h4>Итого за месяц</h4>
-        <label className="schedule-modal-field">
+        <label className="schedule-modal-field schedule-payroll-filter">
           Фильтр по сотруднику
           <select value={payrollEmployeeFilter} onChange={(e) => setPayrollEmployeeFilter(e.target.value)}>
             <option value="">Все</option>
@@ -704,7 +704,7 @@ function ScheduleView({
         <div className="schedule-totals-grid">
           <div className="schedule-total-row schedule-totals-head" aria-hidden>
             <span className="schedule-total-dot schedule-total-dot-spacer" />
-            <span className="muted">Сотрудник</span>
+            <span className="muted">Имя</span>
             <span className="muted schedule-total-col-num">Часы</span>
             <span className="muted schedule-total-col-num">Начислено</span>
             <span className="muted schedule-total-col-num">К выплате</span>
