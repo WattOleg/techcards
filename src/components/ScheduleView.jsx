@@ -6,6 +6,7 @@ import {
   formatRuDate,
   formatShiftRange,
   monthDateStrings,
+  parseHexColor,
   shiftHours,
   shortageDeductionsEqualCents,
   timeToMinutes,
@@ -35,6 +36,13 @@ function newEmployeeId() {
 /** Суммы в тенге без копеек (для отображения) */
 function tenge(n) {
   return Math.round(Number(n) || 0)
+}
+
+function softTint(hex, alpha = 0.2) {
+  const rgb = parseHexColor(hex)
+  if (!rgb) return '#f3f2ef'
+  const a = Math.max(0, Math.min(1, alpha))
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`
 }
 
 function ScheduleView({
@@ -560,9 +568,26 @@ function ScheduleView({
 
       <div className="schedule-week-strip">
         {weekDates.map((ymd) => {
-          const count = (shiftsByDate.get(ymd) || []).length
+          const dayShifts = shiftsByDate.get(ymd) || []
+          const count = dayShifts.length
+          const firstShift = dayShifts[0]
+          const firstEmp = (data.employees || []).find((x) => x.id === firstShift?.employeeId)
+          const bg = count > 0 ? softTint(firstEmp?.color, 0.24) : '#f7f6f3'
+          const border = count > 0 ? softTint(firstEmp?.color, 0.5) : '#eceae5'
+          const { main, muted } = chipTextColors(firstEmp?.color || '#f3f2ef')
           return (
-            <button key={ymd} type="button" className="schedule-week-day" onClick={() => openDayModal(ymd)}>
+            <button
+              key={ymd}
+              type="button"
+              className={`schedule-week-day ${count > 0 ? 'has-shifts' : ''}`}
+              onClick={() => openDayModal(ymd)}
+              style={{
+                background: bg,
+                boxShadow: `inset 0 0 0 1px ${border}`,
+                color: count > 0 ? main : undefined,
+                ['--week-muted']: count > 0 ? muted : '#7f7c76',
+              }}
+            >
               <span className="schedule-week-wd">{weekdayShortRu(ymd)}</span>
               <span className="schedule-week-num">{ymd.slice(-2)}</span>
               <span className="schedule-week-count">{count || '—'}</span>

@@ -1203,29 +1203,44 @@ h1 {
 
 .schedule-week-day {
   border: none;
-  background: var(--surface);
+  background: #f7f6f3;
   border-radius: 10px;
   box-shadow: inset 0 0 0 1px #eceae5;
-  padding: 8px 4px;
+  min-height: 78px;
+  padding: 8px 6px;
   display: grid;
-  gap: 2px;
+  grid-template-rows: 1fr auto auto;
+  align-items: center;
+  justify-items: center;
+  gap: 1px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .schedule-week-wd {
+  display: block;
   font-size: 10px;
   font-weight: 700;
-  color: var(--text2);
+  line-height: 1.15;
+  color: var(--week-muted, var(--text2));
 }
 
 .schedule-week-num {
+  display: block;
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .schedule-week-count {
+  display: block;
   font-size: 11px;
-  color: var(--text2);
+  line-height: 1.1;
+  color: var(--week-muted, var(--text2));
+}
+
+.schedule-week-day.has-shifts .schedule-week-num {
+  font-weight: 800;
 }
 
 .schedule-hint {
