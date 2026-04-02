@@ -26,6 +26,7 @@ body {
   color: var(--text);
   font-family: 'DM Sans', sans-serif;
   overflow: hidden;
+  overscroll-behavior-x: none;
 }
 
 button,
@@ -45,6 +46,7 @@ button:active {
   display: flex;
   justify-content: center;
   overflow: hidden;
+  overscroll-behavior-x: none;
 }
 
 .app-shell {
@@ -54,6 +56,7 @@ button:active {
   background: var(--bg);
   overflow: hidden;
   position: relative;
+  overscroll-behavior-x: none;
 }
 
 .app-visit-counter {
@@ -94,7 +97,10 @@ button:active {
   width: 50%;
   height: 100svh;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
 }
 
 .view {
@@ -939,6 +945,9 @@ h1 {
   margin-top: 14px;
   display: grid;
   gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .schedule-toolbar {

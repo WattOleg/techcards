@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getPhotoCandidates } from '../utils/photoUrl'
 
 function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare }) {
+  const touchRef = useRef({ x: 0, y: 0, active: false })
+
   if (!card) {
     return (
       <div className="view detail-view">
@@ -20,8 +22,28 @@ function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare
   const hasCandidate = photoIdx < photoCandidates.length
   const photoUrl = hasCandidate ? photoCandidates[photoIdx] : ''
 
+  const onTouchStart = (e) => {
+    const t = e.changedTouches?.[0]
+    if (!t) return
+    touchRef.current = { x: t.clientX, y: t.clientY, active: true }
+  }
+
+  const onTouchEnd = (e) => {
+    const t = e.changedTouches?.[0]
+    const state = touchRef.current
+    touchRef.current.active = false
+    if (!t || !state.active) return
+
+    const dx = t.clientX - state.x
+    const dy = t.clientY - state.y
+    const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.4
+
+    // Swipe left: close card and return to list.
+    if (mostlyHorizontal && dx < -70) onBack()
+  }
+
   return (
-    <div className="view detail-view">
+    <div className="view detail-view" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="hero">
         {photoUrl ? (
           <img
