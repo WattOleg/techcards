@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchCardList } from '../api/sheets'
+import { fetchAllCards, fetchCardList } from '../api/sheets'
 
 function parseCardDate(value) {
   const raw = String(value || '').trim()
@@ -28,8 +28,30 @@ export function useCards() {
     try {
       setLoading(true)
       setError('')
-      const nextCards = await fetchCardList()
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 2500)
+
+      let nextCards = []
+      try {
+        nextCards = await fetchCardList({ signal: controller.signal })
+      } finally {
+        clearTimeout(timer)
+      }
+
       setCards(nextCards)
+
+      // Background: fetch full techcards so details are ready when user taps.
+      // Does not block rendering the list.
+      void (async () => {
+        try {
+          const full = await fetchAllCards()
+          if (!Array.isArray(full) || full.length === 0) return
+          const byId = new Map(full.map((c) => [c.sheetName, c]))
+          setCards((prev) => prev.map((c) => byId.get(c.sheetName) || c))
+        } catch {
+          // ignore: list is already rendered (and cache may still exist)
+        }
+      })()
     } catch (err) {
       setError(err.message || 'Не удалось загрузить позиции')
     } finally {

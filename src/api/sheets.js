@@ -42,6 +42,20 @@ async function requestJson(url, options) {
   return data
 }
 
+function withTimeout(ms, signal) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), ms)
+  const onAbort = () => controller.abort()
+  if (signal) signal.addEventListener('abort', onAbort, { once: true })
+  return {
+    signal: controller.signal,
+    clear: () => {
+      clearTimeout(timeout)
+      if (signal) signal.removeEventListener('abort', onAbort)
+    },
+  }
+}
+
 const mockCards = [
   {
     sheetName: 'Aphrodite',
@@ -85,12 +99,12 @@ const mockCards = [
   },
 ]
 
-export async function fetchAllCards() {
+export async function fetchAllCards(options = {}) {
   if (!BASE_URL) {
     return mockCards
   }
   try {
-    const data = await requestJson(`${BASE_URL}?action=getAll`)
+    const data = await requestJson(`${BASE_URL}?action=getAll`, { signal: options.signal })
     const cards = data.cards || []
     writeOffline(OFFLINE_KEYS.cardsAll, cards)
     return cards
@@ -101,27 +115,23 @@ export async function fetchAllCards() {
   }
 }
 
-export async function fetchCardList() {
+export async function fetchCardList(options = {}) {
   if (!BASE_URL) {
     return mockCards
   }
   try {
-    const data = await requestJson(`${BASE_URL}?action=getList`)
+    const data = await requestJson(`${BASE_URL}?action=getList`, { signal: options.signal })
     const cards = data.cards || []
     writeOffline(OFFLINE_KEYS.cardsList, cards)
     return cards
   } catch (err) {
     const cachedList = readOffline(OFFLINE_KEYS.cardsList, [])
     if (cachedList.length) return cachedList
-    try {
-      return await fetchAllCards()
-    } catch {
-      throw err
-    }
+    throw err
   }
 }
 
-export async function fetchCardDetail(sheetName) {
+export async function fetchCardDetail(sheetName, options = {}) {
   if (!BASE_URL) {
     const found = mockCards.find((card) => card.sheetName === sheetName)
     return found || null
@@ -129,6 +139,7 @@ export async function fetchCardDetail(sheetName) {
   try {
     const data = await requestJson(
       `${BASE_URL}?action=getCard&sheetName=${encodeURIComponent(sheetName)}`,
+      { signal: options.signal },
     )
     const card = data.card || null
     if (card && card.sheetName) {
