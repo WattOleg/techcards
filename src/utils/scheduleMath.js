@@ -134,3 +134,29 @@ export function shortageDeductionsEqualCents(employeeCount, shortageCents) {
   }
   return out
 }
+
+export function normalizeRateHistory(rateHistory) {
+  if (!Array.isArray(rateHistory)) return []
+  return rateHistory
+    .map((r) => {
+      const from = String(r?.from || '').trim()
+      const rate = Number(r?.rate)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
+      if (!Number.isFinite(rate) || rate < 0) return null
+      return { from, rate: Math.round(rate) }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.from.localeCompare(b.from))
+}
+
+export function rateForDate(ymd, employee) {
+  const history = normalizeRateHistory(employee?.rateHistory)
+  const baseRate = Math.max(0, Math.round(Number(employee?.hourlyRate) || 0))
+  if (!history.length) return baseRate
+  let applied = baseRate
+  for (const item of history) {
+    if (item.from <= ymd) applied = item.rate
+    else break
+  }
+  return applied
+}

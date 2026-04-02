@@ -558,11 +558,23 @@ function updateSchedule(body) {
     defaultEnd: String(next.defaultEnd || '23:00').trim() || '23:00',
     employees: Array.isArray(next.employees)
       ? next.employees.map(function (e) {
+          var rates = Array.isArray(e.rateHistory)
+            ? e.rateHistory
+                .map(function (r) {
+                  var from = String((r && r.from) || '').trim()
+                  var rate = Number(r && r.rate)
+                  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from)) return null
+                  if (isNaN(rate) || rate < 0) return null
+                  return { from: from, rate: Math.round(rate) }
+                })
+                .filter(Boolean)
+            : []
           return {
             id: String(e.id || '').trim() || Utilities.getUuid(),
             name: String(e.name || '').trim() || 'Без имени',
             color: String(e.color || '#f0d4cf').trim(),
             hourlyRate: Number(e.hourlyRate) >= 0 ? Number(e.hourlyRate) : 0,
+            rateHistory: rates,
           }
         })
       : [],

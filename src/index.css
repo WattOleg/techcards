@@ -1165,6 +1165,37 @@ h1 {
   padding: 6px 8px;
 }
 
+.schedule-rates {
+  display: grid;
+  gap: 6px;
+}
+
+.schedule-rates-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.schedule-rate-row {
+  display: grid;
+  grid-template-columns: 1fr 96px 40px;
+  gap: 6px;
+}
+
+.schedule-rate-row input {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.schedule-rate-remove {
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0;
+}
+
 .schedule-color-input {
   width: 44px;
   height: 36px;

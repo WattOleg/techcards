@@ -6,7 +6,9 @@ import {
   formatRuDate,
   formatShiftRange,
   monthDateStrings,
+  normalizeRateHistory,
   parseHexColor,
+  rateForDate,
   shiftHours,
   shortageDeductionsEqualCents,
   timeToMinutes,
@@ -94,21 +96,25 @@ function ScheduleView({
   }, [data.shifts])
 
   const totals = useMemo(() => {
+    const empById = new Map((data.employees || []).map((e) => [e.id, e]))
     const byEmp = {}
     ;(data.employees || []).forEach((e) => {
-      byEmp[e.id] = { hours: 0, pay: 0, rate: Number(e.hourlyRate) || 0 }
+      byEmp[e.id] = { hours: 0, pay: 0 }
     })
     ;(data.shifts || []).forEach((s) => {
       if (!dates.includes(s.date)) return
       if (!byEmp[s.employeeId]) {
-        byEmp[s.employeeId] = { hours: 0, pay: 0, rate: 0 }
+        byEmp[s.employeeId] = { hours: 0, pay: 0 }
       }
+      const emp = empById.get(s.employeeId) || { hourlyRate: 0, rateHistory: [] }
       const h = shiftHours(s, LEGACY_START, LEGACY_END)
+      const rate = rateForDate(s.date, emp)
       byEmp[s.employeeId].hours += h
+      byEmp[s.employeeId].pay += h * rate
     })
     Object.keys(byEmp).forEach((id) => {
       const t = byEmp[id]
-      t.pay = Math.round(t.hours * t.rate)
+      t.pay = Math.round(t.pay)
     })
     return byEmp
   }, [data, dates])
@@ -213,6 +219,26 @@ function ScheduleView({
       'employees',
       (data.employees || []).map((e) => (e.id === id ? { ...e, ...patch } : e)),
     )
+  }
+
+  const addRatePeriod = (id) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const emp = (data.employees || []).find((e) => e.id === id)
+    const current = normalizeRateHistory(emp?.rateHistory)
+    updateEmployee(id, { rateHistory: [...current, { from: today, rate: Number(emp?.hourlyRate) || 0 }] })
+  }
+
+  const updateRatePeriod = (id, index, patch) => {
+    const emp = (data.employees || []).find((e) => e.id === id)
+    const current = normalizeRateHistory(emp?.rateHistory)
+    const next = current.map((r, i) => (i === index ? { ...r, ...patch } : r))
+    updateEmployee(id, { rateHistory: next })
+  }
+
+  const removeRatePeriod = (id, index) => {
+    const emp = (data.employees || []).find((e) => e.id === id)
+    const current = normalizeRateHistory(emp?.rateHistory)
+    updateEmployee(id, { rateHistory: current.filter((_, i) => i !== index) })
   }
 
   const removeEmployee = (id) => {
@@ -530,6 +556,39 @@ function ScheduleView({
                     disabled={!canEdit}
                   />
                 </label>
+                {canEdit ? (
+                  <div className="schedule-rates">
+                    <div className="schedule-rates-head">
+                      <strong>Ставки по датам</strong>
+                      <button type="button" className="ghost-btn" onClick={() => addRatePeriod(e.id)}>
+                        + Ставка
+                      </button>
+                    </div>
+                    {normalizeRateHistory(e.rateHistory).map((r, idx) => (
+                      <div key={`${e.id}-rate-${idx}`} className="schedule-rate-row">
+                        <input
+                          type="date"
+                          value={r.from}
+                          onChange={(ev) => updateRatePeriod(e.id, idx, { from: ev.target.value })}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          step={10}
+                          value={r.rate}
+                          onChange={(ev) => updateRatePeriod(e.id, idx, { rate: Number(ev.target.value) || 0 })}
+                        />
+                        <button
+                          type="button"
+                          className="ghost-btn schedule-rate-remove"
+                          onClick={() => removeRatePeriod(e.id, idx)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {canEdit ? (
                   <input
                     type="color"
