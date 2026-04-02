@@ -3,6 +3,12 @@ import { getPhotoCandidates } from '../utils/photoUrl'
 
 function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare }) {
   const touchRef = useRef({ x: 0, y: 0, active: false })
+  const photoCandidates = useMemo(() => getPhotoCandidates(card?.photoUrl), [card?.photoUrl])
+  const [photoIdx, setPhotoIdx] = useState(0)
+
+  useEffect(() => {
+    setPhotoIdx(0)
+  }, [card?.photoUrl])
 
   if (!card) {
     return (
@@ -11,13 +17,6 @@ function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare
       </div>
     )
   }
-
-  const photoCandidates = useMemo(() => getPhotoCandidates(card.photoUrl), [card.photoUrl])
-  const [photoIdx, setPhotoIdx] = useState(0)
-
-  useEffect(() => {
-    setPhotoIdx(0)
-  }, [card.photoUrl])
 
   const hasCandidate = photoIdx < photoCandidates.length
   const photoUrl = hasCandidate ? photoCandidates[photoIdx] : ''
