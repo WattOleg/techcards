@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'tk-static-v1'
-const RUNTIME_CACHE = 'tk-runtime-v1'
+const STATIC_CACHE = 'tk-static-v2'
+const RUNTIME_CACHE = 'tk-runtime-v2'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/e-Bar.png']
 
 self.addEventListener('install', (event) => {
@@ -24,6 +24,19 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
+  const isImageRequest = request.destination === 'image'
+
+  // Avoid stale/broken cached remote images (especially Drive links).
+  // Always try network first for images; fall back to cache when offline.
+  if (isImageRequest) {
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const cached = await caches.match(request)
+        return cached || Response.error()
+      }),
+    )
+    return
+  }
   const isAppShellRequest = request.mode === 'navigate'
   if (isAppShellRequest) {
     event.respondWith(
