@@ -140,13 +140,23 @@ export function normalizeRateHistory(rateHistory) {
   return rateHistory
     .map((r) => {
       const from = String(r?.from || '').trim()
+      const toRaw = r?.to == null ? '' : String(r.to).trim()
+      const to = toRaw || null
       const rate = Number(r?.rate)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return null
+      if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null
+      if (to && to < from) return null
       if (!Number.isFinite(rate) || rate < 0) return null
-      return { from, rate: Math.round(rate) }
+      return { from, to, rate: Math.round(rate) }
     })
     .filter(Boolean)
-    .sort((a, b) => a.from.localeCompare(b.from))
+    .sort((a, b) => {
+      const d = a.from.localeCompare(b.from)
+      if (d !== 0) return d
+      if (!a.to && b.to) return -1
+      if (a.to && !b.to) return 1
+      return String(a.to || '').localeCompare(String(b.to || ''))
+    })
 }
 
 export function rateForDate(ymd, employee) {
@@ -155,8 +165,9 @@ export function rateForDate(ymd, employee) {
   if (!history.length) return baseRate
   let applied = baseRate
   for (const item of history) {
-    if (item.from <= ymd) applied = item.rate
-    else break
+    if (item.from > ymd) break
+    const inRange = !item.to || ymd <= item.to
+    if (inRange) applied = item.rate
   }
   return applied
 }

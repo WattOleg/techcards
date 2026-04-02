@@ -562,10 +562,14 @@ function updateSchedule(body) {
             ? e.rateHistory
                 .map(function (r) {
                   var from = String((r && r.from) || '').trim()
+                  var toRaw = r && r.to != null ? String(r.to).trim() : ''
+                  var to = toRaw || ''
                   var rate = Number(r && r.rate)
                   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(from)) return null
+                  if (to && !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(to)) return null
+                  if (to && to < from) return null
                   if (isNaN(rate) || rate < 0) return null
-                  return { from: from, rate: Math.round(rate) }
+                  return { from: from, to: to || null, rate: Math.round(rate) }
                 })
                 .filter(Boolean)
             : []

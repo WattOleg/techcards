@@ -47,6 +47,13 @@ function softTint(hex, alpha = 0.2) {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${a})`
 }
 
+function rateMode(row) {
+  if (!row) return 'from'
+  if (!row.to) return 'from'
+  if (row.to === row.from) return 'day'
+  return 'period'
+}
+
 function ScheduleView({
   data,
   onChange,
@@ -225,13 +232,25 @@ function ScheduleView({
     const today = new Date().toISOString().slice(0, 10)
     const emp = (data.employees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
-    updateEmployee(id, { rateHistory: [...current, { from: today, rate: Number(emp?.hourlyRate) || 0 }] })
+    updateEmployee(id, { rateHistory: [...current, { from: today, to: today, rate: Number(emp?.hourlyRate) || 0 }] })
   }
 
   const updateRatePeriod = (id, index, patch) => {
     const emp = (data.employees || []).find((e) => e.id === id)
     const current = normalizeRateHistory(emp?.rateHistory)
     const next = current.map((r, i) => (i === index ? { ...r, ...patch } : r))
+    updateEmployee(id, { rateHistory: next })
+  }
+
+  const setRatePeriodMode = (id, index, mode) => {
+    const emp = (data.employees || []).find((e) => e.id === id)
+    const current = normalizeRateHistory(emp?.rateHistory)
+    const next = current.map((r, i) => {
+      if (i !== index) return r
+      if (mode === 'from') return { ...r, to: null }
+      if (mode === 'day') return { ...r, to: r.from }
+      return { ...r, to: r.to && r.to >= r.from ? r.to : r.from }
+    })
     updateEmployee(id, { rateHistory: next })
   }
 
@@ -566,11 +585,27 @@ function ScheduleView({
                     </div>
                     {normalizeRateHistory(e.rateHistory).map((r, idx) => (
                       <div key={`${e.id}-rate-${idx}`} className="schedule-rate-row">
+                        <select
+                          value={rateMode(r)}
+                          onChange={(ev) => setRatePeriodMode(e.id, idx, ev.target.value)}
+                        >
+                          <option value="from">С даты</option>
+                          <option value="day">День</option>
+                          <option value="period">Период</option>
+                        </select>
                         <input
                           type="date"
                           value={r.from}
                           onChange={(ev) => updateRatePeriod(e.id, idx, { from: ev.target.value })}
                         />
+                        {rateMode(r) === 'period' ? (
+                          <input
+                            type="date"
+                            value={r.to || r.from}
+                            min={r.from}
+                            onChange={(ev) => updateRatePeriod(e.id, idx, { to: ev.target.value })}
+                          />
+                        ) : null}
                         <input
                           type="number"
                           min={0}

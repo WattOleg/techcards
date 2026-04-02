@@ -1179,15 +1179,31 @@ h1 {
 }
 
 .schedule-rate-row {
-  display: grid;
-  grid-template-columns: 1fr 96px 40px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+}
+
+.schedule-rate-row select {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 86px;
 }
 
 .schedule-rate-row input {
   border: 1px solid #ddd;
   border-radius: 8px;
   padding: 6px 8px;
+}
+
+.schedule-rate-row input[type='date'] {
+  min-width: 138px;
+}
+
+.schedule-rate-row input[type='number'] {
+  width: 88px;
 }
 
 .schedule-rate-remove {
