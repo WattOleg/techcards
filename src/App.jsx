@@ -422,6 +422,7 @@ function App() {
                     onChange: setScheduleData,
                     canEdit: scheduleUnlocked,
                     onRequestUnlock: requestScheduleUnlock,
+                    onExitEdit: () => setScheduleUnlocked(false),
                     onSave: saveScheduleToSheet,
                     saving: scheduleSaving,
                     loading: scheduleLoading,

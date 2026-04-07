@@ -1037,6 +1037,10 @@ h1 {
   font-size: 14px;
 }
 
+.schedule-loading-animated {
+  animation: schedule-fade-pulse 1.2s ease-in-out infinite;
+}
+
 .schedule-loading-spinner {
   width: 18px;
   height: 18px;
@@ -1050,6 +1054,16 @@ h1 {
 @keyframes schedule-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes schedule-fade-pulse {
+  0%,
+  100% {
+    opacity: 0.86;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -1290,6 +1304,10 @@ h1 {
   font-weight: 800;
 }
 
+.schedule-week-day.is-today {
+  box-shadow: inset 0 0 0 2px #1a1a18;
+}
+
 .schedule-hint {
   margin: 0 0 8px;
 }
@@ -1399,12 +1417,17 @@ h1 {
   box-shadow: inset 0 0 0 1px #eceae5;
 }
 
+.schedule-day-row.is-today {
+  box-shadow: inset 0 0 0 2px #1a1a18;
+}
+
 .schedule-day-label-col {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
   flex-shrink: 0;
+  align-self: stretch;
 }
 
 .schedule-add-interval {
@@ -1417,8 +1440,11 @@ h1 {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 2px;
   min-width: 72px;
+  min-height: 100%;
+  height: 100%;
   border: none;
   background: var(--surface2);
   border-radius: 10px;
@@ -1433,6 +1459,10 @@ h1 {
 
 .schedule-day-label.is-tappable:active {
   transform: scale(0.98);
+}
+
+.schedule-day-label.is-today {
+  background: #eae7df;
 }
 
 .schedule-day-label:disabled {
@@ -1485,6 +1515,30 @@ h1 {
   cursor: pointer;
   display: grid;
   place-items: center;
+}
+
+.schedule-day-copy {
+  flex-shrink: 0;
+  align-self: center;
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.schedule-day-copy:active {
+  transform: scale(0.95);
+  background: #e0ddd8;
 }
 
 .schedule-day-clear:active {
@@ -1727,4 +1781,47 @@ h1 {
 
 .schedule-payroll-filter {
   margin-bottom: 8px;
+}
+
+.floating-top-btn {
+  position: fixed;
+  right: calc(var(--page-pad) + env(safe-area-inset-right, 0px));
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  border: none;
+  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: #111;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 25;
+  background: #111;
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+  animation: toast-in 0.18s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }

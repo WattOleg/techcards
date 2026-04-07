@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { exportScheduleToPdf } from '../utils/pdfExport'
 import {
   addDaysYmd,
@@ -60,6 +60,7 @@ function ScheduleView({
   onChange,
   canEdit,
   onRequestUnlock,
+  onExitEdit,
   onSave,
   saving,
   loading,
@@ -77,11 +78,21 @@ function ScheduleView({
   const [patternMode, setPatternMode] = useState('22')
   const [patternTemplate, setPatternTemplate] = useState('full')
   const [scheduleTab, setScheduleTab] = useState('calendar')
+  const [calendarEmployeeFilter, setCalendarEmployeeFilter] = useState('')
   const [payrollEmployeeFilter, setPayrollEmployeeFilter] = useState('')
   const [dayModal, setDayModal] = useState(null)
   const [dayModalError, setDayModalError] = useState('')
   const [pdfBusy, setPdfBusy] = useState(false)
   const [pdfError, setPdfError] = useState('')
+  const [toastText, setToastText] = useState('')
+
+  useEffect(() => {
+    if (!toastText) return
+    const t = setTimeout(() => setToastText(''), 1700)
+    return () => clearTimeout(t)
+  }, [toastText])
+
+  const showToast = (text) => setToastText(String(text || ''))
 
   const dates = useMemo(() => monthDateStrings(year, month), [year, month])
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
@@ -332,16 +343,36 @@ function ScheduleView({
     setDayModalError('')
   }
 
-  /** Удалить все смены за выбранную дату (можно заново открыть день и ввести данные). */
+  /** Удалить смены за выбранную дату (с учетом фильтра сотрудника). */
   const clearDayShifts = (ymd) => {
     if (!canEdit) return
-    const has = (data.shifts || []).some((s) => s.date === ymd)
+    const has = (data.shifts || []).some(
+      (s) => s.date === ymd && (!calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter),
+    )
     if (!has) return
     onChange({
       ...data,
-      shifts: (data.shifts || []).filter((s) => s.date !== ymd),
+      shifts: (data.shifts || []).filter(
+        (s) => !(s.date === ymd && (!calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter)),
+      ),
     })
+    showToast('Удалено')
     if (dayModal?.date === ymd) closeDayModal()
+  }
+
+  const copyPreviousDay = (ymd) => {
+    if (!canEdit) return
+    const prev = addDaysYmd(ymd, -1)
+    const source = (data.shifts || []).filter(
+      (s) => s.date === prev && (!calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter),
+    )
+    if (source.length === 0) return
+    const rest = (data.shifts || []).filter(
+      (s) => !(s.date === ymd && (!calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter)),
+    )
+    const copied = source.map((s) => ({ ...s, id: newShiftId(), date: ymd }))
+    onChange({ ...data, shifts: [...rest, ...copied] })
+    showToast('Скопировано')
   }
 
   const updateDayModalRow = (index, patch) => {
@@ -396,6 +427,7 @@ function ScheduleView({
       end: String(r.end).trim(),
     }))
     onChange({ ...data, shifts: [...rest, ...added] })
+    showToast('Сохранено')
     closeDayModal()
   }
 
@@ -497,6 +529,26 @@ function ScheduleView({
     }
   }
 
+  const handleSaveSchedule = async () => {
+    await onSave()
+    showToast('Сохранено')
+  }
+
+  const goToToday = () => {
+    const t = new Date()
+    const targetYear = t.getFullYear()
+    const targetMonth = t.getMonth()
+    const targetYmd = t.toISOString().slice(0, 10)
+    setYear(targetYear)
+    setMonth(targetMonth)
+    requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-day-row="${targetYmd}"]`)
+      if (row && typeof row.scrollIntoView === 'function') {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    })
+  }
+
   return (
     <section className="schedule-page">
       {loadError ? <p className="error">{loadError}</p> : null}
@@ -510,7 +562,7 @@ function ScheduleView({
           <button
             type="button"
             className="btn btn-dark schedule-unlock"
-            onClick={onSave}
+            onClick={handleSaveSchedule}
             disabled={saving}
           >
             {saving ? 'Сохранение...' : 'Сохранить в таблицу'}
@@ -521,6 +573,9 @@ function ScheduleView({
             Обновить с сервера
           </button>
         ) : null}
+        <button type="button" className="ghost-btn schedule-reload" onClick={goToToday}>
+          Сегодня
+        </button>
         <button
           type="button"
           className="ghost-btn schedule-export-pdf"
@@ -529,9 +584,14 @@ function ScheduleView({
         >
           {pdfBusy ? 'PDF…' : 'Скачать PDF'}
         </button>
+        {canEdit ? (
+          <button type="button" className="ghost-btn schedule-reload" onClick={onExitEdit}>
+            Выйти из редактирования
+          </button>
+        ) : null}
       </div>
       {loading ? (
-        <div className="schedule-loading" role="status" aria-live="polite">
+        <div className="schedule-loading schedule-loading-animated" role="status" aria-live="polite">
           <span className="schedule-loading-spinner" aria-hidden />
           <span>Загрузка графика...</span>
         </div>
@@ -561,6 +621,17 @@ function ScheduleView({
       <p className="muted small schedule-hint">
         Нажмите на <strong>дату</strong> в списке ниже, чтобы задать смены и часы на этот день.
       </p>
+      <label className="schedule-modal-field schedule-payroll-filter">
+        Фильтр календаря по сотруднику
+        <select value={calendarEmployeeFilter} onChange={(e) => setCalendarEmployeeFilter(e.target.value)}>
+          <option value="">Все</option>
+          {(monthEmployees || []).map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="schedule-employees">
         <div className="schedule-employees-head">
@@ -684,7 +755,9 @@ function ScheduleView({
 
       <div className="schedule-week-strip">
         {weekDates.map((ymd) => {
-          const dayShifts = shiftsByDate.get(ymd) || []
+          const dayShifts = (shiftsByDate.get(ymd) || []).filter(
+            (s) => !calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter,
+          )
           const count = dayShifts.length
           const firstShift = dayShifts[0]
           const firstEmp = (monthEmployees || []).find((x) => x.id === firstShift?.employeeId)
@@ -695,7 +768,7 @@ function ScheduleView({
             <button
               key={ymd}
               type="button"
-              className={`schedule-week-day ${count > 0 ? 'has-shifts' : ''}`}
+              className={`schedule-week-day ${count > 0 ? 'has-shifts' : ''} ${ymd === todayYmd ? 'is-today' : ''}`}
               onClick={() => openDayModal(ymd)}
               style={{
                 background: bg,
@@ -742,13 +815,15 @@ function ScheduleView({
 
       <div className="schedule-calendar">
         {dates.map((ymd) => {
-          const dayShifts = shiftsByDate.get(ymd) || []
+          const dayShifts = (shiftsByDate.get(ymd) || []).filter(
+            (s) => !calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter,
+          )
           return (
-            <div key={ymd} className="schedule-day-row">
+            <div key={ymd} className={`schedule-day-row ${ymd === todayYmd ? 'is-today' : ''}`} data-day-row={ymd}>
               <div className="schedule-day-label-col">
                 <button
                   type="button"
-                  className={`schedule-day-label ${canEdit ? 'is-tappable' : ''}`}
+                  className={`schedule-day-label ${canEdit ? 'is-tappable' : ''} ${ymd === todayYmd ? 'is-today' : ''}`}
                   onClick={() => openDayModal(ymd)}
                 >
                   <span className="schedule-day-wd">{weekdayShortRu(ymd)}</span>
@@ -783,18 +858,32 @@ function ScheduleView({
                 {dayShifts.length === 0 ? <span className="muted schedule-day-empty">—</span> : null}
               </div>
               {canEdit && dayShifts.length > 0 ? (
-                <button
-                  type="button"
-                  className="schedule-day-clear"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    clearDayShifts(ymd)
-                  }}
-                  aria-label={`Очистить смены за ${formatRuDate(ymd)}`}
-                  title="Удалить все смены за этот день"
-                >
-                  ×
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="schedule-day-copy"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      copyPreviousDay(ymd)
+                    }}
+                    aria-label={`Копировать смены с предыдущего дня на ${formatRuDate(ymd)}`}
+                    title="Копировать с предыдущего дня"
+                  >
+                    ⎘
+                  </button>
+                  <button
+                    type="button"
+                    className="schedule-day-clear"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearDayShifts(ymd)
+                    }}
+                    aria-label={`Очистить смены за ${formatRuDate(ymd)}`}
+                    title="Удалить смены за этот день"
+                  >
+                    ×
+                  </button>
+                </>
               ) : null}
             </div>
           )
@@ -1040,6 +1129,7 @@ function ScheduleView({
           </div>
         </div>
       ) : null}
+      {toastText ? <div className="app-toast">{toastText}</div> : null}
     </section>
   )
 }

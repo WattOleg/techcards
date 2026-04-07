@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import CardItem from './CardItem'
 import InfoSectionBody from './InfoSectionBody'
 import SearchBar from './SearchBar'
@@ -23,6 +23,7 @@ function ListView({
   onCreate,
   schedule,
 }) {
+  const rootRef = useRef(null)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [exportModalOpen, setExportModalOpen] = useState(false)
@@ -30,6 +31,22 @@ function ListView({
   const [selectedIds, setSelectedIds] = useState([])
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [showScrollTop, setShowScrollTop] = useState(false)
+
+  useEffect(() => {
+    const screenEl = rootRef.current?.closest('.screen')
+    if (!screenEl) return
+    const onScroll = () => setShowScrollTop(screenEl.scrollTop > 420)
+    onScroll()
+    screenEl.addEventListener('scroll', onScroll, { passive: true })
+    return () => screenEl.removeEventListener('scroll', onScroll)
+  }, [activeSection])
+
+  const scrollToTop = () => {
+    const screenEl = rootRef.current?.closest('.screen')
+    if (!screenEl) return
+    screenEl.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase()
@@ -136,7 +153,7 @@ function ListView({
     activeSection !== 'techcards' && activeSection !== 'schedule' ? sectionContent[activeSection] : null
 
   return (
-    <div className="view list-view">
+    <div className="view list-view" ref={rootRef}>
       <div className="list-sticky-zone">
         <header className="list-header">
           <div className="title-menu-wrap">
@@ -350,6 +367,12 @@ function ListView({
           Регламенты
         </button>
       </nav>
+
+      {showScrollTop ? (
+        <button type="button" className="floating-top-btn" onClick={scrollToTop} aria-label="Наверх">
+          ↑ Наверх
+        </button>
+      ) : null}
     </div>
   )
 }
