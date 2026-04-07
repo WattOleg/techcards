@@ -157,11 +157,15 @@ function App() {
   const [scheduleSaveError, setScheduleSaveError] = useState('')
   const [scheduleLoadError, setScheduleLoadError] = useState('')
   const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [scheduleBaseline, setScheduleBaseline] = useState('')
+  const [scheduleSavedAt, setScheduleSavedAt] = useState('')
 
   const selectedCard = useMemo(
     () => cards.find((card) => card.sheetName === selectedId) || null,
     [cards, selectedId],
   )
+  const scheduleSerialized = useMemo(() => JSON.stringify(scheduleData), [scheduleData])
+  const scheduleDirty = Boolean(scheduleBaseline) && scheduleSerialized !== scheduleBaseline
   const categories = useMemo(
     () => {
       const unique = [...new Set(cards.map((card) => String(card.category || '').trim()).filter(Boolean))]
@@ -196,7 +200,10 @@ function App() {
         setScheduleLoadError('')
         const s = await fetchSchedule()
         if (!active) return
-        setScheduleData(normalizeScheduleServer(s))
+        const normalized = normalizeScheduleServer(s)
+        setScheduleData(normalized)
+        setScheduleBaseline(JSON.stringify(normalized))
+        setScheduleSavedAt('')
       } catch (err) {
         if (active) setScheduleLoadError(err.message || 'Не удалось загрузить график')
       } finally {
@@ -388,7 +395,10 @@ function App() {
       setScheduleSaveError('')
       await updateSchedule(scheduleData, import.meta.env.VITE_PIN_CODE)
       const fresh = await fetchSchedule()
-      setScheduleData(normalizeScheduleServer(fresh))
+      const normalized = normalizeScheduleServer(fresh)
+      setScheduleData(normalized)
+      setScheduleBaseline(JSON.stringify(normalized))
+      setScheduleSavedAt(new Date().toISOString())
     } catch (err) {
       setScheduleSaveError(err.message || 'Ошибка сохранения графика')
     } finally {
@@ -428,12 +438,15 @@ function App() {
                     loading: scheduleLoading,
                     saveError: scheduleSaveError,
                     loadError: scheduleLoadError,
+                    saveState: { dirty: scheduleDirty, savedAt: scheduleSavedAt },
                     onReload: async () => {
                       try {
                         setScheduleLoading(true)
                         setScheduleLoadError('')
                         const s = await fetchSchedule()
-                        setScheduleData(normalizeScheduleServer(s))
+                        const normalized = normalizeScheduleServer(s)
+                        setScheduleData(normalized)
+                        setScheduleBaseline(JSON.stringify(normalized))
                       } catch (e) {
                         setScheduleLoadError(e.message || 'Не удалось обновить график')
                       } finally {

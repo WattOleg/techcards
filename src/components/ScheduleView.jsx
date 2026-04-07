@@ -66,6 +66,7 @@ function ScheduleView({
   loading,
   saveError,
   loadError,
+  saveState,
   onReload,
 }) {
   const now = new Date()
@@ -85,14 +86,28 @@ function ScheduleView({
   const [pdfBusy, setPdfBusy] = useState(false)
   const [pdfError, setPdfError] = useState('')
   const [toastText, setToastText] = useState('')
+  const [isOnline, setIsOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine)
 
   useEffect(() => {
     if (!toastText) return
     const t = setTimeout(() => setToastText(''), 1700)
     return () => clearTimeout(t)
   }, [toastText])
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true)
+    const onOffline = () => setIsOnline(false)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [])
 
   const showToast = (text) => setToastText(String(text || ''))
+  const statusSavedAt = saveState?.savedAt
+    ? new Date(saveState.savedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+    : ''
 
   const dates = useMemo(() => monthDateStrings(year, month), [year, month])
   const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
@@ -552,6 +567,14 @@ function ScheduleView({
   return (
     <section className="schedule-page">
       {loadError ? <p className="error">{loadError}</p> : null}
+      <div className="schedule-status-bar">
+        <span className={`schedule-status-pill ${isOnline ? 'is-online' : 'is-offline'}`}>
+          {isOnline ? 'Онлайн' : 'Оффлайн'}
+        </span>
+        <span className={`schedule-status-pill ${saveState?.dirty ? 'is-dirty' : 'is-saved'}`}>
+          {saveState?.dirty ? 'Есть несохраненные изменения' : statusSavedAt ? `Сохранено ${statusSavedAt}` : 'Сохранено'}
+        </span>
+      </div>
 
       <div className="schedule-toolbar schedule-toolbar-row">
         {!canEdit ? (
@@ -590,12 +613,7 @@ function ScheduleView({
           </button>
         ) : null}
       </div>
-      {loading ? (
-        <div className="schedule-loading schedule-loading-animated" role="status" aria-live="polite">
-          <span className="schedule-loading-spinner" aria-hidden />
-          <span>Загрузка графика...</span>
-        </div>
-      ) : null}
+      {loading ? <div className="schedule-loading schedule-loading-animated" role="status" aria-live="polite">Обновляю данные…</div> : null}
       {saveError ? <p className="error">{saveError}</p> : null}
       {pdfError ? <p className="error">{pdfError}</p> : null}
 
@@ -633,7 +651,7 @@ function ScheduleView({
         </select>
       </label>
 
-      <div className="schedule-employees">
+      <div className="schedule-employees card-primary">
         <div className="schedule-employees-head">
           <h4>Сотрудники</h4>
           {canEdit ? (
@@ -646,7 +664,9 @@ function ScheduleView({
           <p className="muted">Добавьте сотрудников, затем откройте день в календаре.</p>
         ) : null}
         <div className="schedule-emp-list">
-          {(monthEmployees || []).map((e) => (
+          {loading
+            ? Array.from({ length: 3 }).map((_, idx) => <div key={`emp-sk-${idx}`} className="schedule-skeleton-card shimmer" />)
+            : (monthEmployees || []).map((e) => (
             <div key={e.id} className="schedule-emp-card" style={{ borderColor: e.color }}>
               <span className="schedule-color-swatch" style={{ background: e.color }} aria-hidden />
               <div className="schedule-emp-fields">
@@ -813,8 +833,10 @@ function ScheduleView({
         </button>
       </div>
 
-      <div className="schedule-calendar">
-        {dates.map((ymd) => {
+      <div className="schedule-calendar card-secondary">
+        {loading
+          ? Array.from({ length: 7 }).map((_, idx) => <div key={`day-sk-${idx}`} className="schedule-skeleton-day shimmer" />)
+          : dates.map((ymd) => {
           const dayShifts = (shiftsByDate.get(ymd) || []).filter(
             (s) => !calendarEmployeeFilter || s.employeeId === calendarEmployeeFilter,
           )
@@ -893,7 +915,7 @@ function ScheduleView({
       ) : null}
 
       {scheduleTab === 'payroll' ? (
-      <div className="schedule-totals">
+      <div className="schedule-totals card-primary">
         <h4>Итого за месяц</h4>
         <label className="schedule-modal-field schedule-payroll-filter">
           Фильтр по сотруднику
