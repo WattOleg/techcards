@@ -1954,11 +1954,37 @@ h1 {
 .writeoff-history-row {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 8px;
   border-radius: 10px;
   background: #f8f6f2;
+}
+
+.writeoff-history-row {
+  flex-wrap: wrap;
+}
+
+.writeoff-history-row > div {
+  min-width: 0;
+}
+
+.writeoff-history-row .small {
+  width: 100%;
+}
+
+@media (max-width: 390px) {
+  .writeoff-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .writeoff-form-reason {
+    grid-column: auto;
+  }
+
+  .schedule-toolbar-row {
+    gap: 6px;
+  }
 }
 
 @keyframes toast-in {

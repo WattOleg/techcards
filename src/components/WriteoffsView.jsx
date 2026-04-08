@@ -14,6 +14,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [editEntry, setEditEntry] = useState(null)
+  const [formError, setFormError] = useState('')
   const [draft, setDraft] = useState({
     date: todayYmd(),
     employee: '',
@@ -43,13 +44,19 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
   )
 
   const addEntry = () => {
-    if (!draft.employee.trim() || !draft.item.trim() || !String(draft.qty).trim()) return
+    const employee = draft.employee.trim()
+    const item = draft.item.trim()
+    const qty = String(draft.qty).trim()
+    if (!employee || !item || !qty) {
+      setFormError('Заполните сотрудника, продукт и количество.')
+      return
+    }
     const entry = {
       id: uid('wr'),
       date: draft.date || todayYmd(),
-      employee: draft.employee.trim(),
-      item: draft.item.trim(),
-      qty: String(draft.qty).trim(),
+      employee,
+      item,
+      qty,
       unit: draft.unit.trim() || 'гр',
       type: draft.type === 'move' ? 'move' : 'writeoff',
       reason: draft.reason.trim(),
@@ -57,6 +64,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
     }
     onChange({ ...data, entries: [entry, ...entries] })
     setDraft((prev) => ({ ...prev, item: '', qty: '', reason: '' }))
+    setFormError('')
   }
 
   const removeEntry = (id) => onChange({ ...data, entries: entries.filter((e) => e.id !== id) })
@@ -72,24 +80,35 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
       type: editEntry.type === 'move' ? 'move' : 'writeoff',
       reason: String(editEntry.reason || '').trim(),
     }
-    if (!clean.date || !clean.employee || !clean.item || !clean.qty) return
+    if (!clean.date || !clean.employee || !clean.item || !clean.qty) {
+      setFormError('В редактировании заполните дату, сотрудника, продукт и количество.')
+      return
+    }
     onChange({ ...data, entries: entries.map((e) => (e.id === clean.id ? clean : e)) })
     setEditEntry(null)
+    setFormError('')
   }
 
   const addTemplate = () => {
-    if (!templateTitle.trim() || !draft.item.trim() || !String(draft.qty).trim()) return
+    const title = templateTitle.trim()
+    const item = draft.item.trim()
+    const qty = String(draft.qty).trim()
+    if (!title || !item || !qty) {
+      setFormError('Для шаблона заполните название, продукт и количество.')
+      return
+    }
     const tpl = {
       id: uid('tpl'),
-      title: templateTitle.trim(),
-      item: draft.item.trim(),
-      qty: String(draft.qty).trim(),
+      title,
+      item,
+      qty,
       unit: draft.unit.trim() || 'гр',
       type: draft.type,
       reason: draft.reason.trim(),
     }
     onChange({ ...data, templates: [tpl, ...templates] })
     setTemplateTitle('')
+    setFormError('')
   }
 
   const applyTemplate = (tpl) =>
@@ -119,6 +138,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
         </button>
       </div>
       {saveError ? <p className="error">{saveError}</p> : null}
+      {formError ? <p className="error">{formError}</p> : null}
       {loading ? <div className="schedule-loading">Загрузка списаний...</div> : null}
 
       <div className="schedule-employees card-primary">
