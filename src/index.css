@@ -1989,6 +1989,13 @@ h1 {
   width: 100%;
 }
 
+.writeoff-row-action {
+  min-width: 108px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 390px) {
   .writeoff-form-grid {
     grid-template-columns: 1fr;

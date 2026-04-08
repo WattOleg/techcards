@@ -45,6 +45,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
   })
   const [templateTitle, setTemplateTitle] = useState('')
   const [saveHint, setSaveHint] = useState('')
+  const [templateToDelete, setTemplateToDelete] = useState(null)
 
   const entries = Array.isArray(data?.entries) ? data.entries : []
   const templates = Array.isArray(data?.templates) ? data.templates : []
@@ -225,7 +226,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
               <button type="button" className="ghost-btn" onClick={() => applyTemplate(tpl)}>
                 {tpl.title}
               </button>
-              <button type="button" className="ghost-btn schedule-rate-remove" onClick={() => removeTemplate(tpl.id)}>
+              <button type="button" className="ghost-btn schedule-rate-remove" onClick={() => setTemplateToDelete(tpl)}>
                 ×
               </button>
             </div>
@@ -264,16 +265,40 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
                 {e.date} - {e.employee} - {e.type === 'move' ? 'Перемещение' : 'Списание'}
                 {e.reason ? ` - ${e.reason}` : ''}
               </div>
-              <button type="button" className="ghost-btn schedule-rate-remove" onClick={() => removeEntry(e.id)}>
+              <button type="button" className="ghost-btn writeoff-row-action" onClick={() => removeEntry(e.id)}>
                 Удалить
               </button>
-              <button type="button" className="ghost-btn schedule-rate-remove" onClick={() => setEditEntry({ ...e })}>
+              <button type="button" className="ghost-btn writeoff-row-action" onClick={() => setEditEntry({ ...e })}>
                 Изменить
               </button>
             </div>
           ))}
         </div>
       </div>
+
+      {templateToDelete ? (
+        <div className="export-modal-backdrop" onClick={() => setTemplateToDelete(null)}>
+          <div className="export-modal confirm-modal" onClick={(ev) => ev.stopPropagation()}>
+            <h3>Удалить шаблон?</h3>
+            <p className="muted">Шаблон «{templateToDelete.title}» будет удален.</p>
+            <div className="export-actions">
+              <button type="button" className="ghost-btn" onClick={() => setTemplateToDelete(null)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => {
+                  removeTemplate(templateToDelete.id)
+                  setTemplateToDelete(null)
+                }}
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editEntry ? (
         <div className="export-modal-backdrop" onClick={() => setEditEntry(null)}>
