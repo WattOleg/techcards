@@ -239,6 +239,11 @@ function scheduleToPdfContent(payload) {
 }
 
 function writeoffsToPdfContent(payload) {
+  const parseQty = (value) => {
+    const raw = String(value || '').replace(',', '.').replace(/[^0-9.\-]/g, '')
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : 0
+  }
   const rows = (payload.entries || []).map((e) => [
     { text: toText(e.date), margin: [2, 3, 2, 3] },
     { text: toText(e.employee), margin: [2, 3, 2, 3] },
@@ -247,6 +252,25 @@ function writeoffsToPdfContent(payload) {
     { text: `${toText(e.qty)} ${toText(e.unit)}`.trim(), alignment: 'right', margin: [2, 3, 2, 3] },
     { text: toText(e.reason), margin: [2, 3, 2, 3] },
   ])
+  const sumMap = new Map()
+  ;(payload.entries || []).forEach((e) => {
+    const item = toText(e.item)
+    const unit = toText(e.unit) || 'шт'
+    if (!item) return
+    const key = `${item}__${unit}`
+    const curr = sumMap.get(key) || { item, unit, writeoff: 0, move: 0 }
+    const q = parseQty(e.qty)
+    if ((e.type || '') === 'move') curr.move += q
+    else curr.writeoff += q
+    sumMap.set(key, curr)
+  })
+  const sumRows = Array.from(sumMap.values())
+    .sort((a, b) => a.item.localeCompare(b.item))
+    .map((r) => [
+      { text: r.item, margin: [2, 3, 2, 3] },
+      { text: `${r.writeoff.toFixed(2).replace(/\.00$/, '')} ${r.unit}`.trim(), alignment: 'right', margin: [2, 3, 2, 3] },
+      { text: `${r.move.toFixed(2).replace(/\.00$/, '')} ${r.unit}`.trim(), alignment: 'right', margin: [2, 3, 2, 3] },
+    ])
   return [
     { text: 'СПИСАНИЯ И ПЕРЕМЕЩЕНИЯ', style: 'title' },
     { text: `Сформировано: ${new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}`, style: 'meta' },
@@ -266,6 +290,24 @@ function writeoffsToPdfContent(payload) {
           ...(rows.length
             ? rows
             : [[{ text: '—', colSpan: 6, alignment: 'center', margin: [0, 8, 0, 8] }, {}, {}, {}, {}, {}]]),
+        ],
+      },
+      layout: pdfTableLayout,
+    },
+    { text: 'Итог по повторяющимся продуктам', style: 'subtitle' },
+    {
+      table: {
+        headerRows: 1,
+        widths: ['*', 100, 100],
+        body: [
+          [
+            { text: 'Продукт', style: 'headCell' },
+            { text: 'Списано', style: 'headCell', alignment: 'right' },
+            { text: 'Перемещено', style: 'headCell', alignment: 'right' },
+          ],
+          ...(sumRows.length
+            ? sumRows
+            : [[{ text: '—', colSpan: 3, alignment: 'center', margin: [0, 8, 0, 8] }, {}, {}]]),
         ],
       },
       layout: pdfTableLayout,
