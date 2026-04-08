@@ -1950,6 +1950,22 @@ h1 {
   margin-bottom: 8px;
 }
 
+.writeoff-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.writeoff-actions-row .writeoff-template-input {
+  grid-column: 2;
+}
+
+.writeoff-actions-row .ghost-btn,
+.writeoff-actions-row .btn {
+  width: 100%;
+}
+
 .writeoff-template-row,
 .writeoff-history-row {
   display: flex;
@@ -1979,6 +1995,14 @@ h1 {
   }
 
   .writeoff-form-reason {
+    grid-column: auto;
+  }
+
+  .writeoff-actions-row {
+    grid-template-columns: 1fr;
+  }
+
+  .writeoff-actions-row .writeoff-template-input {
     grid-column: auto;
   }
 

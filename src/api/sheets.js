@@ -332,8 +332,12 @@ export async function fetchWriteoffs() {
 
 export async function updateWriteoffs(writeoffs, pin) {
   if (!BASE_URL) return { success: true, mocked: true, writeoffs, pin }
-  return await requestJson(BASE_URL, {
+  // Keep latest local state to avoid data loss on refresh.
+  writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
+  const res = await requestJson(BASE_URL, {
     method: 'POST',
     body: JSON.stringify({ action: 'updateWriteoffs', writeoffs, pin }),
   })
+  writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
+  return res
 }

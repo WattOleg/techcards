@@ -10,6 +10,25 @@ function todayYmd() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function ToolbarIcon({ type }) {
+  if (type === 'save') {
+    return (
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
 export default function WriteoffsView({ data, onChange, onSave, saving, loading, saveError }) {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -25,6 +44,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
     reason: '',
   })
   const [templateTitle, setTemplateTitle] = useState('')
+  const [saveHint, setSaveHint] = useState('')
 
   const entries = Array.isArray(data?.entries) ? data.entries : []
   const templates = Array.isArray(data?.templates) ? data.templates : []
@@ -127,17 +147,37 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
     await exportWriteoffsToPdf({ entries: filteredEntries })
   }
 
+  const saveToServer = async () => {
+    setSaveHint('')
+    await onSave()
+    setSaveHint('Сохранено')
+  }
+
   return (
     <section className="writeoffs-page">
       <div className="schedule-toolbar schedule-toolbar-row">
-        <button type="button" className="btn btn-dark" onClick={onSave} disabled={saving}>
-          {saving ? 'Сохраняю...' : 'Сохранить в таблицу'}
+        <button
+          type="button"
+          className="btn btn-dark schedule-toolbar-icon-btn"
+          onClick={saveToServer}
+          disabled={saving}
+          aria-label="Сохранить в таблицу"
+          title="Сохранить"
+        >
+          <ToolbarIcon type="save" />
         </button>
-        <button type="button" className="ghost-btn" onClick={exportPdf}>
-          Скачать PDF (период)
+        <button
+          type="button"
+          className="ghost-btn schedule-toolbar-icon-btn"
+          onClick={exportPdf}
+          aria-label="Скачать PDF (период)"
+          title="Скачать PDF"
+        >
+          <ToolbarIcon type="download" />
         </button>
       </div>
       {saveError ? <p className="error">{saveError}</p> : null}
+      {saveHint ? <p className="muted small">{saveHint}</p> : null}
       {formError ? <p className="error">{formError}</p> : null}
       {loading ? <div className="schedule-loading">Загрузка списаний...</div> : null}
 
@@ -160,7 +200,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
             onChange={(e) => setDraft((p) => ({ ...p, reason: e.target.value }))}
           />
         </div>
-        <div className="schedule-toolbar-row">
+        <div className="writeoff-actions-row">
           <button type="button" className="btn btn-dark" onClick={addEntry}>
             Добавить в ленту
           </button>
