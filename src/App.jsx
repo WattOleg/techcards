@@ -10,9 +10,11 @@ import {
   fetchCardDetail,
   fetchSchedule,
   fetchSectionsContent,
+  fetchWriteoffs,
   updateCard,
   updateSchedule,
   updateSectionContent,
+  updateWriteoffs,
 } from './api/sheets'
 import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
@@ -41,6 +43,7 @@ const CATEGORY_PRIORITY = ['Кофе', 'Матча', 'Чай листовой', 
 const APP_SECTIONS = [
   { id: 'techcards', label: 'ТехКарты' },
   { id: 'schedule', label: 'График смен' },
+  { id: 'writeoffs', label: 'Списания' },
   { id: 'regulations', label: 'Регламенты' },
   { id: 'appearance', label: 'Требования к внешнему виду' },
   { id: 'behavior', label: 'Поведение' },
@@ -136,6 +139,7 @@ const DEFAULT_SECTION_CONTENT = {
 }
 
 const VISIT_EVENT = 'app-visit-count'
+const DEFAULT_WRITEOFFS = { entries: [], templates: [] }
 
 function App() {
   const { cards, loading, error, refresh, addLocalCard, updateLocalCard, removeLocalCard } = useCards()
@@ -159,6 +163,10 @@ function App() {
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleBaseline, setScheduleBaseline] = useState('')
   const [scheduleSavedAt, setScheduleSavedAt] = useState('')
+  const [writeoffsData, setWriteoffsData] = useState(DEFAULT_WRITEOFFS)
+  const [writeoffsLoading, setWriteoffsLoading] = useState(false)
+  const [writeoffsSaving, setWriteoffsSaving] = useState(false)
+  const [writeoffsSaveError, setWriteoffsSaveError] = useState('')
 
   const selectedCard = useMemo(
     () => cards.find((card) => card.sheetName === selectedId) || null,
@@ -185,6 +193,29 @@ function App() {
         setSectionContent({ ...DEFAULT_SECTION_CONTENT, ...sharedSections })
       } catch {
         // Keep local defaults when server sections are not available.
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        setWriteoffsLoading(true)
+        setWriteoffsSaveError('')
+        const data = await fetchWriteoffs()
+        if (!active) return
+        setWriteoffsData({
+          entries: Array.isArray(data?.entries) ? data.entries : [],
+          templates: Array.isArray(data?.templates) ? data.templates : [],
+        })
+      } catch (err) {
+        if (active) setWriteoffsSaveError(err.message || 'Не удалось загрузить списания')
+      } finally {
+        if (active) setWriteoffsLoading(false)
       }
     })()
     return () => {
@@ -406,6 +437,23 @@ function App() {
     }
   }
 
+  const saveWriteoffsToSheet = async () => {
+    try {
+      setWriteoffsSaving(true)
+      setWriteoffsSaveError('')
+      await updateWriteoffs(writeoffsData, import.meta.env.VITE_PIN_CODE)
+      const fresh = await fetchWriteoffs()
+      setWriteoffsData({
+        entries: Array.isArray(fresh?.entries) ? fresh.entries : [],
+        templates: Array.isArray(fresh?.templates) ? fresh.templates : [],
+      })
+    } catch (err) {
+      setWriteoffsSaveError(err.message || 'Ошибка сохранения списаний')
+    } finally {
+      setWriteoffsSaving(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <div className={`screen-stack view-${view}`}>
@@ -453,6 +501,18 @@ function App() {
                         setScheduleLoading(false)
                       }
                     },
+                  }
+                : null
+            }
+            writeoffs={
+              activeSection === 'writeoffs'
+                ? {
+                    data: writeoffsData,
+                    onChange: setWriteoffsData,
+                    onSave: saveWriteoffsToSheet,
+                    loading: writeoffsLoading,
+                    saving: writeoffsSaving,
+                    saveError: writeoffsSaveError,
                   }
                 : null
             }

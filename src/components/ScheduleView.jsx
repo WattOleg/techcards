@@ -55,6 +55,32 @@ function rateMode(row) {
   return 'period'
 }
 
+function ToolbarIcon({ type }) {
+  if (type === 'edit') {
+    return (
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z" />
+      </svg>
+    )
+  }
+  if (type === 'refresh') {
+    return (
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+        <polyline points="21 3 21 9 15 9" />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
 function ScheduleView({
   data,
   onChange,
@@ -578,8 +604,14 @@ function ScheduleView({
 
       <div className="schedule-toolbar schedule-toolbar-row">
         {!canEdit ? (
-          <button type="button" className="btn btn-dark schedule-unlock" onClick={onRequestUnlock}>
-            Редактировать (PIN)
+          <button
+            type="button"
+            className="btn btn-dark schedule-toolbar-icon-btn"
+            onClick={onRequestUnlock}
+            aria-label="Редактировать график (PIN)"
+            title="Редактировать"
+          >
+            <ToolbarIcon type="edit" />
           </button>
         ) : (
           <button
@@ -592,8 +624,14 @@ function ScheduleView({
           </button>
         )}
         {onReload ? (
-          <button type="button" className="ghost-btn schedule-reload" onClick={onReload}>
-            Обновить с сервера
+          <button
+            type="button"
+            className="ghost-btn schedule-toolbar-icon-btn"
+            onClick={onReload}
+            aria-label="Обновить с сервера"
+            title="Обновить"
+          >
+            <ToolbarIcon type="refresh" />
           </button>
         ) : null}
         <button type="button" className="ghost-btn schedule-reload" onClick={goToToday}>
@@ -601,11 +639,13 @@ function ScheduleView({
         </button>
         <button
           type="button"
-          className="ghost-btn schedule-export-pdf"
+          className="ghost-btn schedule-toolbar-icon-btn"
           onClick={handleExportPdf}
           disabled={pdfBusy}
+          aria-label="Скачать PDF"
+          title="Скачать PDF"
         >
-          {pdfBusy ? 'PDF…' : 'Скачать PDF'}
+          <ToolbarIcon type="download" />
         </button>
         {canEdit ? (
           <button type="button" className="ghost-btn schedule-reload" onClick={onExitEdit}>

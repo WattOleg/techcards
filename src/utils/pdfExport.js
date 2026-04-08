@@ -238,6 +238,41 @@ function scheduleToPdfContent(payload) {
   ]
 }
 
+function writeoffsToPdfContent(payload) {
+  const rows = (payload.entries || []).map((e) => [
+    { text: toText(e.date), margin: [2, 3, 2, 3] },
+    { text: toText(e.employee), margin: [2, 3, 2, 3] },
+    { text: toText(e.type === 'move' ? 'Перемещение' : 'Списание'), margin: [2, 3, 2, 3] },
+    { text: toText(e.item), margin: [2, 3, 2, 3] },
+    { text: `${toText(e.qty)} ${toText(e.unit)}`.trim(), alignment: 'right', margin: [2, 3, 2, 3] },
+    { text: toText(e.reason), margin: [2, 3, 2, 3] },
+  ])
+  return [
+    { text: 'СПИСАНИЯ И ПЕРЕМЕЩЕНИЯ', style: 'title' },
+    { text: `Сформировано: ${new Date().toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}`, style: 'meta' },
+    {
+      table: {
+        headerRows: 1,
+        widths: [56, 68, 70, '*', 56, 110],
+        body: [
+          [
+            { text: 'Дата', style: 'headCell' },
+            { text: 'Сотрудник', style: 'headCell' },
+            { text: 'Тип', style: 'headCell' },
+            { text: 'Продукт', style: 'headCell' },
+            { text: 'Кол-во', style: 'headCell', alignment: 'right' },
+            { text: 'Причина / Куда', style: 'headCell' },
+          ],
+          ...(rows.length
+            ? rows
+            : [[{ text: '—', colSpan: 6, alignment: 'center', margin: [0, 8, 0, 8] }, {}, {}, {}, {}, {}]]),
+        ],
+      },
+      layout: pdfTableLayout,
+    },
+  ]
+}
+
 function isShareAbort(error) {
   if (!error) return false
   return error.name === 'AbortError'
@@ -276,6 +311,14 @@ export async function exportScheduleToPdf(payload) {
   const docDef = baseDocDefinition(scheduleToPdfContent(payload))
   await new Promise((resolve) => {
     pdfMake.createPdf(docDef).download(filename, null, resolve)
+  })
+}
+
+export async function exportWriteoffsToPdf(payload) {
+  const pdfMake = await getPdfMake()
+  const filename = `spisaniya-${new Date().toISOString().slice(0, 10)}.pdf`
+  await new Promise((resolve) => {
+    pdfMake.createPdf(baseDocDefinition(writeoffsToPdfContent(payload))).download(filename, null, resolve)
   })
 }
 

@@ -261,7 +261,7 @@ h1 {
   transform: translateX(-50%);
   width: min(430px, 100vw);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   padding: 8px var(--page-pad) calc(8px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(to top, var(--bg) 65%, rgba(245, 244, 240, 0));
@@ -275,7 +275,7 @@ h1 {
   padding: 8px 10px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1074,6 +1074,20 @@ h1 {
 .schedule-unlock {
   padding: 0 14px;
   min-height: 44px;
+}
+
+.schedule-toolbar-icon-btn {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.schedule-toolbar-icon-btn svg {
+  display: block;
 }
 
 .schedule-loading {
@@ -1890,6 +1904,61 @@ h1 {
   font-weight: 600;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
   animation: toast-in 0.18s ease-out;
+}
+
+.writeoffs-page {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.writeoff-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.writeoff-form-grid input,
+.writeoff-form-grid select,
+.writeoff-template-input {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.writeoff-form-reason {
+  grid-column: 1 / -1;
+}
+
+.writeoff-template-input {
+  min-width: 0;
+}
+
+.writeoff-templates,
+.writeoff-history {
+  display: grid;
+  gap: 8px;
+}
+
+.writeoff-filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.writeoff-template-row,
+.writeoff-history-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  border-radius: 10px;
+  background: #f8f6f2;
 }
 
 @keyframes toast-in {

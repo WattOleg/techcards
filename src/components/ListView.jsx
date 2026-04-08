@@ -3,6 +3,7 @@ import CardItem from './CardItem'
 import InfoSectionBody from './InfoSectionBody'
 import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
+import WriteoffsView from './WriteoffsView'
 
 const INFO_SECTION_IDS = ['regulations', 'appearance', 'behavior', 'rights']
 
@@ -22,6 +23,7 @@ function ListView({
   onExportSelected,
   onCreate,
   schedule,
+  writeoffs,
 }) {
   const rootRef = useRef(null)
   const [query, setQuery] = useState('')
@@ -148,9 +150,14 @@ function ListView({
   }
 
   const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label || 'ТехКарты'
-  const activeMainSection = activeSection === 'techcards' || activeSection === 'schedule' ? activeSection : 'regulations'
+  const activeMainSection =
+    activeSection === 'techcards' || activeSection === 'schedule' || activeSection === 'writeoffs'
+      ? activeSection
+      : 'regulations'
   const infoBlock =
-    activeSection !== 'techcards' && activeSection !== 'schedule' ? sectionContent[activeSection] : null
+    activeSection !== 'techcards' && activeSection !== 'schedule' && activeSection !== 'writeoffs'
+      ? sectionContent[activeSection]
+      : null
 
   return (
     <div className="view list-view" ref={rootRef}>
@@ -221,6 +228,7 @@ function ListView({
       </div>
 
       {activeSection === 'schedule' && schedule ? <ScheduleView {...schedule} /> : null}
+      {activeSection === 'writeoffs' && writeoffs ? <WriteoffsView {...writeoffs} /> : null}
 
       {infoBlock ? (
         <section className="info-page">
@@ -235,7 +243,7 @@ function ListView({
             Подсказка: вернитесь в раздел <strong>ТехКарты</strong>, чтобы открыть карточки напитков.
           </p>
         </section>
-      ) : activeSection === 'schedule' ? null : (
+      ) : activeSection === 'schedule' || activeSection === 'writeoffs' ? null : (
         <>
           <div className="toolbar-row">
             <button type="button" className="refresh-btn" onClick={onCreate}>
@@ -358,6 +366,13 @@ function ListView({
           onClick={() => onSectionChange('schedule')}
         >
           График
+        </button>
+        <button
+          type="button"
+          className={`bottom-tab ${activeMainSection === 'writeoffs' ? 'is-active' : ''}`}
+          onClick={() => onSectionChange('writeoffs')}
+        >
+          Списания
         </button>
         <button
           type="button"

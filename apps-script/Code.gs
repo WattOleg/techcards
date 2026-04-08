@@ -7,6 +7,7 @@ const SCHEDULE_SHEET_NAME = '_SCHEDULE'
 /** Месячные листы: _SCHEDULE_2026-03 (JSON смен + недостача за месяц) */
 const SCHEDULE_MONTH_PREFIX = '_SCHEDULE_'
 const STATS_SHEET_NAME = '_APP_STATS'
+const WRITEOFFS_SHEET_NAME = '_WRITEOFFS'
 
 function doGet(e) {
   const action = e.parameter.action
@@ -15,6 +16,7 @@ function doGet(e) {
   if (action === 'getAll') return getAll()
   if (action === 'getSections') return getSections()
   if (action === 'getSchedule') return getSchedule()
+  if (action === 'getWriteoffs') return getWriteoffs()
   if (action === 'logVisit') return logAppVisit()
   return jsonResponse({ error: 'unknown action' })
 }
@@ -26,7 +28,87 @@ function doPost(e) {
   if (body.action === 'delete') return deleteSheet(body)
   if (body.action === 'updateSection') return updateSection(body)
   if (body.action === 'updateSchedule') return updateSchedule(body)
+  if (body.action === 'updateWriteoffs') return updateWriteoffs(body)
   return jsonResponse({ error: 'unknown action' })
+}
+
+function getDefaultWriteoffsData_() {
+  return { entries: [], templates: [] }
+}
+
+function getWriteoffsSheet_(ss) {
+  let sheet = ss.getSheetByName(WRITEOFFS_SHEET_NAME)
+  if (!sheet) {
+    sheet = ss.insertSheet(WRITEOFFS_SHEET_NAME)
+    sheet.getRange(1, 1).setValue(JSON.stringify(getDefaultWriteoffsData_()))
+    sheet.getRange(2, 1).setValue('Списания/перемещения (JSON в A1).')
+    sheet.hideSheet()
+  }
+  return sheet
+}
+
+function getWriteoffs() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
+  const sheet = getWriteoffsSheet_(ss)
+  const raw = sheet.getRange(1, 1).getValue()
+  if (!raw || !String(raw).trim()) return jsonResponse({ writeoffs: getDefaultWriteoffsData_() })
+  try {
+    const parsed = JSON.parse(String(raw))
+    return jsonResponse({
+      writeoffs: {
+        entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+        templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+      },
+    })
+  } catch (e) {
+    return jsonResponse({ writeoffs: getDefaultWriteoffsData_() })
+  }
+}
+
+function updateWriteoffs(body) {
+  if (body.pin && body.pin !== PIN) return jsonResponse({ error: 'invalid pin' })
+  const src = body.writeoffs
+  if (!src || typeof src !== 'object') return jsonResponse({ error: 'writeoffs is required' })
+  const entries = Array.isArray(src.entries)
+    ? src.entries
+        .map(function (e) {
+          return {
+            id: String((e && e.id) || '').trim() || Utilities.getUuid(),
+            date: String((e && e.date) || '').trim(),
+            employee: String((e && e.employee) || '').trim(),
+            item: String((e && e.item) || '').trim(),
+            qty: String((e && e.qty) || '').trim(),
+            unit: String((e && e.unit) || '').trim(),
+            type: String((e && e.type) || '').trim() === 'move' ? 'move' : 'writeoff',
+            reason: String((e && e.reason) || '').trim(),
+            createdAt: String((e && e.createdAt) || '').trim(),
+          }
+        })
+        .filter(function (e) {
+          return e.date && e.employee && e.item && e.qty
+        })
+    : []
+  const templates = Array.isArray(src.templates)
+    ? src.templates
+        .map(function (t) {
+          return {
+            id: String((t && t.id) || '').trim() || Utilities.getUuid(),
+            title: String((t && t.title) || '').trim(),
+            item: String((t && t.item) || '').trim(),
+            qty: String((t && t.qty) || '').trim(),
+            unit: String((t && t.unit) || '').trim(),
+            type: String((t && t.type) || '').trim() === 'move' ? 'move' : 'writeoff',
+            reason: String((t && t.reason) || '').trim(),
+          }
+        })
+        .filter(function (t) {
+          return t.title && t.item && t.qty
+        })
+    : []
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
+  const sheet = getWriteoffsSheet_(ss)
+  sheet.getRange(1, 1).setValue(JSON.stringify({ entries: entries, templates: templates }))
+  return jsonResponse({ success: true })
 }
 
 function getDefaultSectionsObject() {
@@ -151,7 +233,7 @@ function updateSection(body) {
 
 function shouldIncludeSheetInCardList_(sheetName) {
   const n = String(sheetName || '')
-  if (n === SECTIONS_SHEET_NAME || n === SCHEDULE_SHEET_NAME || n === STATS_SHEET_NAME) return false
+  if (n === SECTIONS_SHEET_NAME || n === SCHEDULE_SHEET_NAME || n === STATS_SHEET_NAME || n === WRITEOFFS_SHEET_NAME) return false
   if (n.indexOf(SCHEDULE_MONTH_PREFIX) === 0 && n.length > SCHEDULE_MONTH_PREFIX.length) return false
   return true
 }

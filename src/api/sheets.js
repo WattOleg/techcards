@@ -4,6 +4,7 @@ const OFFLINE_KEYS = {
   cardsAll: 'tk_offline_cards_all_v1',
   sections: 'tk_offline_sections_v1',
   schedule: 'tk_offline_schedule_v1',
+  writeoffs: 'tk_offline_writeoffs_v1',
 }
 
 function readOffline(key, fallback) {
@@ -272,6 +273,21 @@ const mockSchedule = {
   bonusesByMonth: {},
 }
 
+const mockWriteoffs = {
+  entries: [],
+  templates: [
+    {
+      id: 'tpl-ethiopia',
+      title: 'Кофе Эфиопия',
+      item: 'Кофе Эфиопия',
+      qty: '60',
+      unit: 'гр',
+      type: 'move',
+      reason: 'на Кондитерский',
+    },
+  ],
+}
+
 export async function fetchSchedule() {
   if (!BASE_URL) {
     return mockSchedule
@@ -296,5 +312,28 @@ export async function updateSchedule(schedule, pin) {
   return await requestJson(BASE_URL, {
     method: 'POST',
     body: JSON.stringify({ action: 'updateSchedule', schedule, pin }),
+  })
+}
+
+export async function fetchWriteoffs() {
+  if (!BASE_URL) return mockWriteoffs
+  try {
+    const cb = Date.now()
+    const data = await requestJson(`${BASE_URL}?action=getWriteoffs&_cb=${cb}`)
+    const writeoffs = data.writeoffs || mockWriteoffs
+    writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
+    return writeoffs
+  } catch (err) {
+    const cached = readOffline(OFFLINE_KEYS.writeoffs, null)
+    if (cached && typeof cached === 'object') return cached
+    throw err
+  }
+}
+
+export async function updateWriteoffs(writeoffs, pin) {
+  if (!BASE_URL) return { success: true, mocked: true, writeoffs, pin }
+  return await requestJson(BASE_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'updateWriteoffs', writeoffs, pin }),
   })
 }
