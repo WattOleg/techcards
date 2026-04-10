@@ -29,7 +29,17 @@ function ToolbarIcon({ type }) {
   )
 }
 
-export default function WriteoffsView({ data, onChange, onSave, saving, loading, saveError }) {
+export default function WriteoffsView({
+  data,
+  onReload,
+  onAppendEntry,
+  onDeleteEntry,
+  onUpdateEntry,
+  onReplaceTemplates,
+  saving,
+  loading,
+  saveError,
+}) {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [editEntry, setEditEntry] = useState(null)
@@ -64,7 +74,9 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
     [sortedEntries, fromDate, toDate],
   )
 
-  const addEntry = () => {
+  const busy = Boolean(saving || loading)
+
+  const addEntry = async () => {
     const employee = draft.employee.trim()
     const item = draft.item.trim()
     const qty = String(draft.qty).trim()
@@ -83,13 +95,25 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
       reason: draft.reason.trim(),
       createdAt: new Date().toISOString(),
     }
-    onChange({ ...data, entries: [entry, ...entries] })
-    setDraft((prev) => ({ ...prev, item: '', qty: '', reason: '' }))
-    setFormError('')
+    try {
+      setFormError('')
+      await onAppendEntry(entry)
+      setDraft((prev) => ({ ...prev, item: '', qty: '', reason: '' }))
+    } catch {
+      setFormError('Не удалось записать строку в таблицу. Проверьте сеть и PIN.')
+    }
   }
 
-  const removeEntry = (id) => onChange({ ...data, entries: entries.filter((e) => e.id !== id) })
-  const saveEditedEntry = () => {
+  const removeEntry = async (id) => {
+    try {
+      setFormError('')
+      await onDeleteEntry(id)
+    } catch {
+      setFormError('Не удалось удалить запись.')
+    }
+  }
+
+  const saveEditedEntry = async () => {
     if (!editEntry) return
     const clean = {
       ...editEntry,
@@ -105,12 +129,16 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
       setFormError('В редактировании заполните дату, сотрудника, продукт и количество.')
       return
     }
-    onChange({ ...data, entries: entries.map((e) => (e.id === clean.id ? clean : e)) })
-    setEditEntry(null)
-    setFormError('')
+    try {
+      setFormError('')
+      await onUpdateEntry(clean)
+      setEditEntry(null)
+    } catch {
+      setFormError('Не удалось сохранить изменения.')
+    }
   }
 
-  const addTemplate = () => {
+  const addTemplate = async () => {
     const title = templateTitle.trim()
     const item = draft.item.trim()
     const qty = String(draft.qty).trim()
@@ -127,9 +155,13 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
       type: draft.type,
       reason: draft.reason.trim(),
     }
-    onChange({ ...data, templates: [tpl, ...templates] })
-    setTemplateTitle('')
-    setFormError('')
+    try {
+      setFormError('')
+      await onReplaceTemplates([tpl, ...templates])
+      setTemplateTitle('')
+    } catch {
+      setFormError('Не удалось сохранить шаблон.')
+    }
   }
 
   const applyTemplate = (tpl) =>
@@ -142,16 +174,27 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
       reason: tpl.reason || '',
     }))
 
-  const removeTemplate = (id) => onChange({ ...data, templates: templates.filter((t) => t.id !== id) })
+  const removeTemplate = async (id) => {
+    try {
+      setFormError('')
+      await onReplaceTemplates(templates.filter((t) => t.id !== id))
+    } catch {
+      setFormError('Не удалось удалить шаблон.')
+    }
+  }
 
   const exportPdf = async () => {
     await exportWriteoffsToPdf({ entries: filteredEntries })
   }
 
-  const saveToServer = async () => {
+  const pullFromSheet = async () => {
     setSaveHint('')
-    await onSave()
-    setSaveHint('Сохранено')
+    try {
+      await onReload()
+      setSaveHint('Загружены актуальные данные из таблицы')
+    } catch {
+      setSaveHint('')
+    }
   }
 
   return (
@@ -160,10 +203,10 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
         <button
           type="button"
           className="btn btn-dark schedule-toolbar-icon-btn"
-          onClick={saveToServer}
-          disabled={saving}
-          aria-label="Сохранить в таблицу"
-          title="Сохранить"
+          onClick={pullFromSheet}
+          disabled={busy}
+          aria-label="Обновить из Google Таблицы"
+          title="Обновить из таблицы"
         >
           <ToolbarIcon type="save" />
         </button>
@@ -202,7 +245,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
           />
         </div>
         <div className="writeoff-actions-row">
-          <button type="button" className="btn btn-dark" onClick={addEntry}>
+          <button type="button" className="btn btn-dark" onClick={addEntry} disabled={busy}>
             Добавить в ленту
           </button>
           <input
@@ -211,7 +254,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
             onChange={(e) => setTemplateTitle(e.target.value)}
             className="writeoff-template-input"
           />
-          <button type="button" className="ghost-btn" onClick={addTemplate}>
+          <button type="button" className="ghost-btn" onClick={addTemplate} disabled={busy}>
             Сохранить как шаблон
           </button>
         </div>
@@ -265,10 +308,15 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
                 {e.date} - {e.employee} - {e.type === 'move' ? 'Перемещение' : 'Списание'}
                 {e.reason ? ` - ${e.reason}` : ''}
               </div>
-              <button type="button" className="ghost-btn writeoff-row-action" onClick={() => removeEntry(e.id)}>
+              <button type="button" className="ghost-btn writeoff-row-action" onClick={() => removeEntry(e.id)} disabled={busy}>
                 Удалить
               </button>
-              <button type="button" className="ghost-btn writeoff-row-action" onClick={() => setEditEntry({ ...e })}>
+              <button
+                type="button"
+                className="ghost-btn writeoff-row-action"
+                onClick={() => setEditEntry({ ...e })}
+                disabled={busy}
+              >
                 Изменить
               </button>
             </div>
@@ -288,9 +336,10 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
               <button
                 type="button"
                 className="btn btn-danger"
-                onClick={() => {
-                  removeTemplate(templateToDelete.id)
+                onClick={async () => {
+                  const id = templateToDelete.id
                   setTemplateToDelete(null)
+                  await removeTemplate(id)
                 }}
               >
                 Удалить
@@ -324,7 +373,7 @@ export default function WriteoffsView({ data, onChange, onSave, saving, loading,
               <button type="button" className="ghost-btn" onClick={() => setEditEntry(null)}>
                 Отмена
               </button>
-              <button type="button" className="btn btn-dark" onClick={saveEditedEntry}>
+              <button type="button" className="btn btn-dark" onClick={saveEditedEntry} disabled={busy}>
                 Сохранить
               </button>
             </div>

@@ -11,10 +11,10 @@ import {
   fetchSchedule,
   fetchSectionsContent,
   fetchWriteoffs,
+  mutateWriteoffs,
   updateCard,
   updateSchedule,
   updateSectionContent,
-  updateWriteoffs,
 } from './api/sheets'
 import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
@@ -437,18 +437,38 @@ function App() {
     }
   }
 
-  const saveWriteoffsToSheet = async () => {
+  const writeoffsPin = import.meta.env.VITE_PIN_CODE
+
+  const reloadWriteoffsFromSheet = async () => {
+    const fresh = await fetchWriteoffs()
+    setWriteoffsData({
+      entries: Array.isArray(fresh?.entries) ? fresh.entries : [],
+      templates: Array.isArray(fresh?.templates) ? fresh.templates : [],
+    })
+  }
+
+  const runWriteoffMutation = async (payload) => {
+    setWriteoffsSaving(true)
+    setWriteoffsSaveError('')
+    try {
+      await mutateWriteoffs(payload, writeoffsPin)
+      await reloadWriteoffsFromSheet()
+    } catch (err) {
+      setWriteoffsSaveError(err.message || 'Ошибка сохранения списаний')
+      throw err
+    } finally {
+      setWriteoffsSaving(false)
+    }
+  }
+
+  const refreshWriteoffsOnly = async () => {
     try {
       setWriteoffsSaving(true)
       setWriteoffsSaveError('')
-      await updateWriteoffs(writeoffsData, import.meta.env.VITE_PIN_CODE)
-      const fresh = await fetchWriteoffs()
-      setWriteoffsData({
-        entries: Array.isArray(fresh?.entries) ? fresh.entries : [],
-        templates: Array.isArray(fresh?.templates) ? fresh.templates : [],
-      })
+      await reloadWriteoffsFromSheet()
     } catch (err) {
-      setWriteoffsSaveError(err.message || 'Ошибка сохранения списаний')
+      setWriteoffsSaveError(err.message || 'Не удалось обновить списания')
+      throw err
     } finally {
       setWriteoffsSaving(false)
     }
@@ -508,8 +528,11 @@ function App() {
               activeSection === 'writeoffs'
                 ? {
                     data: writeoffsData,
-                    onChange: setWriteoffsData,
-                    onSave: saveWriteoffsToSheet,
+                    onReload: refreshWriteoffsOnly,
+                    onAppendEntry: (entry) => runWriteoffMutation({ op: 'append', entry }),
+                    onDeleteEntry: (id) => runWriteoffMutation({ op: 'delete', id }),
+                    onUpdateEntry: (entry) => runWriteoffMutation({ op: 'update', entry }),
+                    onReplaceTemplates: (templates) => runWriteoffMutation({ op: 'templates', templates }),
                     loading: writeoffsLoading,
                     saving: writeoffsSaving,
                     saveError: writeoffsSaveError,

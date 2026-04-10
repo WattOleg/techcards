@@ -288,6 +288,21 @@ const mockWriteoffs = {
   ],
 }
 
+function offlineWriteoffsState() {
+  const cur = readOffline(OFFLINE_KEYS.writeoffs, null)
+  if (cur && typeof cur === 'object' && Array.isArray(cur.entries) && Array.isArray(cur.templates)) {
+    return { entries: [...cur.entries], templates: [...cur.templates] }
+  }
+  return {
+    entries: Array.isArray(mockWriteoffs.entries) ? [...mockWriteoffs.entries] : [],
+    templates: Array.isArray(mockWriteoffs.templates) ? [...mockWriteoffs.templates] : [],
+  }
+}
+
+function persistOfflineWriteoffs(state) {
+  writeOffline(OFFLINE_KEYS.writeoffs, state)
+}
+
 export async function fetchSchedule() {
   if (!BASE_URL) {
     return mockSchedule
@@ -316,7 +331,9 @@ export async function updateSchedule(schedule, pin) {
 }
 
 export async function fetchWriteoffs() {
-  if (!BASE_URL) return mockWriteoffs
+  if (!BASE_URL) {
+    return offlineWriteoffsState()
+  }
   try {
     const cb = Date.now()
     const data = await requestJson(`${BASE_URL}?action=getWriteoffs&_cb=${cb}`)
@@ -330,14 +347,44 @@ export async function fetchWriteoffs() {
   }
 }
 
-export async function updateWriteoffs(writeoffs, pin) {
-  if (!BASE_URL) return { success: true, mocked: true, writeoffs, pin }
-  // Keep latest local state to avoid data loss on refresh.
-  writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
-  const res = await requestJson(BASE_URL, {
+/** Операции со списаниями: append / delete / update строки, templates — полная замена шаблонов в A1. */
+export async function mutateWriteoffs(payload, pin) {
+  const op = String(payload?.op || '').trim()
+  if (!op) throw new Error('Не указана операция')
+
+  if (!BASE_URL) {
+    const state = offlineWriteoffsState()
+    if (op === 'append' && payload.entry) {
+      state.entries.unshift({ ...payload.entry })
+      persistOfflineWriteoffs(state)
+      return { success: true, mocked: true }
+    }
+    if (op === 'delete' && payload.id) {
+      state.entries = state.entries.filter((e) => e.id !== payload.id)
+      persistOfflineWriteoffs(state)
+      return { success: true, mocked: true }
+    }
+    if (op === 'update' && payload.entry) {
+      const e = payload.entry
+      state.entries = state.entries.map((x) => (x.id === e.id ? { ...e } : x))
+      persistOfflineWriteoffs(state)
+      return { success: true, mocked: true }
+    }
+    if (op === 'templates' && Array.isArray(payload.templates)) {
+      state.templates = payload.templates.map((t) => ({ ...t }))
+      persistOfflineWriteoffs(state)
+      return { success: true, mocked: true }
+    }
+    throw new Error('Неверная операция')
+  }
+
+  const body = { action: 'updateWriteoffs', pin, op }
+  if (payload.entry) body.entry = payload.entry
+  if (payload.id != null && payload.id !== '') body.id = payload.id
+  if (payload.templates) body.templates = payload.templates
+
+  return await requestJson(BASE_URL, {
     method: 'POST',
-    body: JSON.stringify({ action: 'updateWriteoffs', writeoffs, pin }),
+    body: JSON.stringify(body),
   })
-  writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
-  return res
 }
