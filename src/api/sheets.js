@@ -30,21 +30,14 @@ async function requestJson(url, options) {
   const retries = 2
   let lastError = null
 
-  const fetchOptions =
-    method === 'POST' && options?.body != null && typeof options.body === 'string'
-      ? {
-          ...options,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
-          },
-        }
-      : options
+  // Не ставить Content-Type: application/json на POST к Apps Script: это включает CORS preflight
+  // (OPTIONS), который у веб‑приложений GAS часто падает с телефона. Тело всё равно приходит в
+  // postData.contents; fetch по умолчанию шлёт text/plain для строки — «простой» запрос.
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     let res
     try {
-      res = await fetch(url, fetchOptions)
+      res = await fetch(url, options)
     } catch (err) {
       lastError = err
       if (attempt < retries) {
