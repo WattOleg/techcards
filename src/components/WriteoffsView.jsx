@@ -10,6 +10,27 @@ function todayYmd() {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Для сортировки и фильтров: только календарная дата YYYY-MM-DD. */
+function ymdFromEntry(e) {
+  const raw = String(e?.date || e?.createdAt || '').trim()
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : raw.slice(0, 10)
+}
+
+/** Дата в ленте: по-русски, без времени и часового пояса. */
+function formatWriteoffDateRu(e) {
+  const ymd = ymdFromEntry(e)
+  if (!ymd || ymd.length < 10) {
+    const s = String(e?.date || '').trim()
+    return s ? s.replace(/T.*/, '').replace(/GMT.*/i, '').trim() || '—' : '—'
+  }
+  const [y, mo, d] = ymd.split('-').map(Number)
+  if (!y || !mo || !d) return ymd
+  const dt = new Date(y, mo - 1, d)
+  if (Number.isNaN(dt.getTime())) return ymd
+  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 function ToolbarIcon({ type }) {
   if (type === 'save') {
     return (
@@ -62,15 +83,22 @@ export default function WriteoffsView({
   const entries = Array.isArray(data?.entries) ? data.entries : []
   const templates = Array.isArray(data?.templates) ? data.templates : []
   const sortedEntries = useMemo(
-    () => [...entries].sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))),
+    () =>
+      [...entries].sort((a, b) => {
+        const db = ymdFromEntry(b)
+        const da = ymdFromEntry(a)
+        const c = db.localeCompare(da)
+        if (c !== 0) return c
+        return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))
+      }),
     [entries],
   )
   const filteredEntries = useMemo(
     () =>
       sortedEntries.filter((e) => {
-        const d = String(e.date || '')
-        if (fromDate && d < fromDate) return false
-        if (toDate && d > toDate) return false
+        const d = ymdFromEntry(e)
+        if (fromDate && d && d < fromDate) return false
+        if (toDate && d && d > toDate) return false
         return true
       }),
     [sortedEntries, fromDate, toDate],
@@ -320,8 +348,8 @@ export default function WriteoffsView({
                 <strong>{e.item}</strong> - {e.qty} {e.unit}
               </div>
               <div className="muted small">
-                {e.date} - {e.employee} - {e.type === 'move' ? 'Перемещение' : 'Списание'}
-                {e.reason ? ` - ${e.reason}` : ''}
+                {formatWriteoffDateRu(e)} — {e.employee} — {e.type === 'move' ? 'Перемещение' : 'Списание'}
+                {e.reason ? ` — ${e.reason}` : ''}
               </div>
               <button type="button" className="ghost-btn writeoff-row-action" onClick={() => removeEntry(e.id)} disabled={busy}>
                 Удалить
