@@ -65,6 +65,8 @@ export default function WriteoffsView({
   const [appendSubmitting, setAppendSubmitting] = useState(false)
   const [reloadSubmitting, setReloadSubmitting] = useState(false)
   const [templateSubmitting, setTemplateSubmitting] = useState(false)
+  /** Строка ленты: удаление или сохранение после «Изменить». */
+  const [historyPending, setHistoryPending] = useState(null)
 
   const entries = Array.isArray(data?.entries) ? data.entries : []
   const templates = Array.isArray(data?.templates) ? data.templates : []
@@ -94,7 +96,12 @@ export default function WriteoffsView({
   )
 
   const busy = Boolean(
-    saving || loading || appendSubmitting || reloadSubmitting || templateSubmitting,
+    saving ||
+      loading ||
+      appendSubmitting ||
+      reloadSubmitting ||
+      templateSubmitting ||
+      historyPending,
   )
 
   /** saveError с сервера важнее: раньше formError затирал реальную причину (PIN, ответ GAS). */
@@ -135,11 +142,14 @@ export default function WriteoffsView({
   }
 
   const removeEntry = async (id) => {
+    setHistoryPending({ id, op: 'delete' })
     try {
       setFormError('')
       await onDeleteEntry(id)
     } catch (err) {
       setFormError(err?.message || 'Не удалось удалить запись.')
+    } finally {
+      setHistoryPending(null)
     }
   }
 
@@ -159,12 +169,15 @@ export default function WriteoffsView({
       setFormError('В редактировании заполните дату, сотрудника, продукт и количество.')
       return
     }
+    setHistoryPending({ id: clean.id, op: 'update' })
     try {
       setFormError('')
       await onUpdateEntry(clean)
       setEditEntry(null)
     } catch (err) {
       setFormError(err?.message || 'Не удалось сохранить изменения.')
+    } finally {
+      setHistoryPending(null)
     }
   }
 
@@ -277,10 +290,10 @@ export default function WriteoffsView({
       {saveHint ? <p className="muted small">{saveHint}</p> : null}
       {loading ? <div className="schedule-loading">Загрузка списаний...</div> : null}
 
-      <div className="schedule-employees card-primary">
+      <div className="schedule-employees card-primary writeoff-new-card">
         <h4>Новая запись</h4>
         <div className="writeoff-form-date-block">
-          <span className="muted small">Дата записи</span>
+          <span className="muted small writeoff-form-date-label">Дата записи</span>
           <span className="writeoff-date-ru-text">
             {draft.date && String(draft.date).length >= 10
               ? formatWriteoffDateRuFromYmd(String(draft.date).slice(0, 10))
@@ -295,20 +308,37 @@ export default function WriteoffsView({
           />
         </div>
         <div className="writeoff-form-grid">
-          <input placeholder="Сотрудник" value={draft.employee} onChange={(e) => setDraft((p) => ({ ...p, employee: e.target.value }))} />
-          <select value={draft.type} onChange={(e) => setDraft((p) => ({ ...p, type: e.target.value }))}>
-            <option value="writeoff">Списание</option>
-            <option value="move">Перемещение</option>
-          </select>
-          <input placeholder="Продукт" value={draft.item} onChange={(e) => setDraft((p) => ({ ...p, item: e.target.value }))} />
-          <input placeholder="Количество" value={draft.qty} onChange={(e) => setDraft((p) => ({ ...p, qty: e.target.value }))} />
-          <input placeholder="Ед. изм. (гр/кг/л/шт)" value={draft.unit} onChange={(e) => setDraft((p) => ({ ...p, unit: e.target.value }))} />
-          <input
-            className="writeoff-form-reason"
-            placeholder={draft.type === 'move' ? 'Куда перемещение' : 'Причина списания'}
-            value={draft.reason}
-            onChange={(e) => setDraft((p) => ({ ...p, reason: e.target.value }))}
-          />
+          <label className="writeoff-field-label">
+            <span className="writeoff-field-caption">Сотрудник</span>
+            <input placeholder="ФИО" value={draft.employee} onChange={(e) => setDraft((p) => ({ ...p, employee: e.target.value }))} />
+          </label>
+          <label className="writeoff-field-label">
+            <span className="writeoff-field-caption">Тип</span>
+            <select value={draft.type} onChange={(e) => setDraft((p) => ({ ...p, type: e.target.value }))}>
+              <option value="writeoff">Списание</option>
+              <option value="move">Перемещение</option>
+            </select>
+          </label>
+          <label className="writeoff-field-label">
+            <span className="writeoff-field-caption">Продукт</span>
+            <input placeholder="Название" value={draft.item} onChange={(e) => setDraft((p) => ({ ...p, item: e.target.value }))} />
+          </label>
+          <label className="writeoff-field-label">
+            <span className="writeoff-field-caption">Количество</span>
+            <input placeholder="Число" value={draft.qty} onChange={(e) => setDraft((p) => ({ ...p, qty: e.target.value }))} />
+          </label>
+          <label className="writeoff-field-label writeoff-form-unit">
+            <span className="writeoff-field-caption">Ед. изм.</span>
+            <input placeholder="гр, кг, л, шт…" value={draft.unit} onChange={(e) => setDraft((p) => ({ ...p, unit: e.target.value }))} />
+          </label>
+          <label className="writeoff-field-label writeoff-form-reason">
+            <span className="writeoff-field-caption">{draft.type === 'move' ? 'Куда' : 'Причина'}</span>
+            <input
+              placeholder={draft.type === 'move' ? 'Куда перемещение' : 'Причина списания'}
+              value={draft.reason}
+              onChange={(e) => setDraft((p) => ({ ...p, reason: e.target.value }))}
+            />
+          </label>
         </div>
         <div className="writeoff-actions-row">
           <button type="button" className="btn btn-dark" onClick={addEntry} disabled={busy} aria-busy={appendSubmitting}>
@@ -379,28 +409,57 @@ export default function WriteoffsView({
         </div>
         <div className="writeoff-history">
           {filteredEntries.length === 0 ? <p className="muted">Записей за выбранный период нет.</p> : null}
-          {filteredEntries.map((e) => (
-            <div key={e.id} className="writeoff-history-row">
-              <div>
-                <strong>{e.item}</strong> - {e.qty} {e.unit}
+          {filteredEntries.map((e) => {
+            const delBusy = historyPending?.id === e.id && historyPending.op === 'delete'
+            const editBusy = historyPending?.id === e.id && historyPending.op === 'update'
+            return (
+              <div key={e.id} className="writeoff-history-row">
+                <div className="writeoff-history-main">
+                  <div>
+                    <strong>{e.item}</strong> — {e.qty} {e.unit}
+                  </div>
+                  <div className="muted small">
+                    {formatWriteoffDateRuFromEntry(e)} — {e.employee} — {e.type === 'move' ? 'Перемещение' : 'Списание'}
+                    {e.reason ? ` — ${e.reason}` : ''}
+                  </div>
+                </div>
+                <div className="writeoff-history-actions">
+                  <button
+                    type="button"
+                    className="ghost-btn writeoff-row-action"
+                    onClick={() => removeEntry(e.id)}
+                    disabled={busy}
+                    aria-busy={delBusy}
+                  >
+                    {delBusy ? (
+                      <span className="writeoff-btn-inner writeoff-history-btn-inner">
+                        <span className="schedule-loading-spinner" aria-hidden />
+                        <span>Удаление…</span>
+                      </span>
+                    ) : (
+                      'Удалить'
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-btn writeoff-row-action"
+                    onClick={() => setEditEntry({ ...e })}
+                    disabled={busy}
+                    aria-busy={editBusy}
+                  >
+                    {editBusy ? (
+                      <span className="writeoff-btn-inner writeoff-history-btn-inner">
+                        <span className="schedule-loading-spinner" aria-hidden />
+                        <span>Сохранение…</span>
+                      </span>
+                    ) : (
+                      'Изменить'
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="muted small">
-                {formatWriteoffDateRuFromEntry(e)} — {e.employee} — {e.type === 'move' ? 'Перемещение' : 'Списание'}
-                {e.reason ? ` — ${e.reason}` : ''}
-              </div>
-              <button type="button" className="ghost-btn writeoff-row-action" onClick={() => removeEntry(e.id)} disabled={busy}>
-                Удалить
-              </button>
-              <button
-                type="button"
-                className="ghost-btn writeoff-row-action"
-                onClick={() => setEditEntry({ ...e })}
-                disabled={busy}
-              >
-                Изменить
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
