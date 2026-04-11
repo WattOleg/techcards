@@ -20,8 +20,30 @@ function doGet(e) {
   if (action === 'getSections') return getSections()
   if (action === 'getSchedule') return getSchedule()
   if (action === 'getWriteoffs') return getWriteoffs()
+  /** Надёжная запись списаний с мобильных: тот же контракт, что POST updateWriteoffs, но через GET (без CORS preflight). */
+  if (action === 'writeoffsMutate') return writeoffsMutateFromGet_(e.parameter)
   if (action === 'logVisit') return logAppVisit()
   return jsonResponse({ error: 'unknown action' })
+}
+
+function writeoffsMutateFromGet_(params) {
+  const raw = params.payload != null ? String(params.payload) : ''
+  if (!raw) return jsonResponse({ error: 'payload required' })
+  let inner
+  try {
+    inner = JSON.parse(raw)
+  } catch (err) {
+    return jsonResponse({ error: 'Некорректный payload' })
+  }
+  if (!inner || typeof inner !== 'object') return jsonResponse({ error: 'invalid payload' })
+  const pin = params.pin != null ? String(params.pin) : ''
+  return updateWriteoffs({
+    pin: pin,
+    op: inner.op,
+    entry: inner.entry,
+    id: inner.id,
+    templates: inner.templates,
+  })
 }
 
 function doPost(e) {

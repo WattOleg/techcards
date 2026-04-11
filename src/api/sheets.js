@@ -399,6 +399,25 @@ export async function mutateWriteoffs(payload, pin) {
   if (payload.id != null && payload.id !== '') body.id = payload.id
   if (payload.templates) body.templates = payload.templates
 
+  const inner = { op }
+  if (payload.entry) inner.entry = payload.entry
+  if (payload.id != null && payload.id !== '') inner.id = payload.id
+  if (payload.templates) inner.templates = payload.templates
+
+  try {
+    const u = new URL(BASE_URL)
+    u.searchParams.set('action', 'writeoffsMutate')
+    u.searchParams.set('pin', String(pin || ''))
+    u.searchParams.set('payload', JSON.stringify(inner))
+    u.searchParams.set('_cb', String(Date.now()))
+    const getUrl = u.toString()
+    if (getUrl.length <= 7500) {
+      return await requestJson(getUrl)
+    }
+  } catch {
+    // BASE_URL не парсится как URL — только POST
+  }
+
   return await requestJson(BASE_URL, {
     method: 'POST',
     body: JSON.stringify(body),
