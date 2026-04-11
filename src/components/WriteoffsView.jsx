@@ -56,6 +56,8 @@ export default function WriteoffsView({
   const [templateTitle, setTemplateTitle] = useState('')
   const [saveHint, setSaveHint] = useState('')
   const [templateToDelete, setTemplateToDelete] = useState(null)
+  const [appendSubmitting, setAppendSubmitting] = useState(false)
+  const [reloadSubmitting, setReloadSubmitting] = useState(false)
 
   const entries = Array.isArray(data?.entries) ? data.entries : []
   const templates = Array.isArray(data?.templates) ? data.templates : []
@@ -74,7 +76,7 @@ export default function WriteoffsView({
     [sortedEntries, fromDate, toDate],
   )
 
-  const busy = Boolean(saving || loading)
+  const busy = Boolean(saving || loading || appendSubmitting || reloadSubmitting)
 
   const addEntry = async () => {
     const employee = draft.employee.trim()
@@ -95,12 +97,15 @@ export default function WriteoffsView({
       reason: draft.reason.trim(),
       createdAt: new Date().toISOString(),
     }
+    setAppendSubmitting(true)
     try {
       setFormError('')
       await onAppendEntry(entry)
       setDraft((prev) => ({ ...prev, item: '', qty: '', reason: '' }))
     } catch {
-      setFormError('Не удалось записать строку в таблицу. Проверьте сеть и PIN.')
+      setFormError('Не удалось записать строку в таблицу. Проверьте сеть, PIN и деплой Apps Script.')
+    } finally {
+      setAppendSubmitting(false)
     }
   }
 
@@ -189,11 +194,14 @@ export default function WriteoffsView({
 
   const pullFromSheet = async () => {
     setSaveHint('')
+    setReloadSubmitting(true)
     try {
       await onReload()
       setSaveHint('Загружены актуальные данные из таблицы')
     } catch {
       setSaveHint('')
+    } finally {
+      setReloadSubmitting(false)
     }
   }
 
@@ -208,7 +216,7 @@ export default function WriteoffsView({
           aria-label="Обновить из Google Таблицы"
           title="Обновить из таблицы"
         >
-          <ToolbarIcon type="save" />
+          {reloadSubmitting ? <span className="schedule-loading-spinner" aria-hidden /> : <ToolbarIcon type="save" />}
         </button>
         <button
           type="button"
@@ -245,8 +253,15 @@ export default function WriteoffsView({
           />
         </div>
         <div className="writeoff-actions-row">
-          <button type="button" className="btn btn-dark" onClick={addEntry} disabled={busy}>
-            Добавить в ленту
+          <button type="button" className="btn btn-dark" onClick={addEntry} disabled={busy} aria-busy={appendSubmitting}>
+            {appendSubmitting ? (
+              <span className="writeoff-btn-inner">
+                <span className="schedule-loading-spinner" aria-hidden />
+                <span>Сохранение…</span>
+              </span>
+            ) : (
+              'Добавить в ленту'
+            )}
           </button>
           <input
             placeholder="Название шаблона"

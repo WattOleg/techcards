@@ -12,6 +12,7 @@ import {
   fetchSectionsContent,
   fetchWriteoffs,
   mutateWriteoffs,
+  syncWriteoffsOfflineCache,
   updateCard,
   updateSchedule,
   updateSectionContent,
@@ -452,7 +453,28 @@ function App() {
     setWriteoffsSaveError('')
     try {
       await mutateWriteoffs(payload, writeoffsPin)
-      await reloadWriteoffsFromSheet()
+      try {
+        await reloadWriteoffsFromSheet()
+      } catch (reloadErr) {
+        if (payload.op === 'append' && payload.entry) {
+          setWriteoffsData((prev) => {
+            const list = Array.isArray(prev.entries) ? prev.entries : []
+            const entry = payload.entry
+            const next = {
+              templates: Array.isArray(prev.templates) ? prev.templates : [],
+              entries: [entry, ...list.filter((e) => e.id !== entry.id)],
+            }
+            syncWriteoffsOfflineCache(next)
+            return next
+          })
+          setWriteoffsSaveError(
+            reloadErr.message ||
+              'Строка записана в таблицу, но список не удалось обновить. Проверьте сеть и нажмите «Обновить из таблицы».',
+          )
+          return
+        }
+        throw reloadErr
+      }
     } catch (err) {
       setWriteoffsSaveError(err.message || 'Ошибка сохранения списаний')
       throw err

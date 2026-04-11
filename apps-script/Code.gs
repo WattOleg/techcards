@@ -25,7 +25,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  const body = JSON.parse(e.postData.contents)
+  let body
+  try {
+    const raw = e.postData && e.postData.contents != null ? String(e.postData.contents) : ''
+    body = raw ? JSON.parse(raw) : {}
+  } catch (err) {
+    return jsonResponse({ error: 'Некорректный JSON в теле запроса' })
+  }
+  if (!body || typeof body !== 'object') return jsonResponse({ error: 'Пустое тело запроса' })
   if (body.action === 'create') return createSheet(body)
   if (body.action === 'update') return updateSheet(body)
   if (body.action === 'delete') return deleteSheet(body)

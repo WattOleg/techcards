@@ -27,20 +27,33 @@ function writeOffline(key, value) {
 
 async function requestJson(url, options) {
   const method = String(options?.method || 'GET').toUpperCase()
-  const retries = method === 'GET' ? 2 : 0
+  const retries = 2
   let lastError = null
+
+  const fetchOptions =
+    method === 'POST' && options?.body != null && typeof options.body === 'string'
+      ? {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers && typeof options.headers === 'object' ? options.headers : {}),
+          },
+        }
+      : options
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     let res
     try {
-      res = await fetch(url, options)
+      res = await fetch(url, fetchOptions)
     } catch (err) {
       lastError = err
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
         continue
       }
-      throw new Error('Не удалось подключиться к серверу. Проверьте Apps Script deploy и доступ "Anyone".')
+      throw new Error(
+        'Не удалось подключиться к серверу. Проверьте URL (VITE_APPS_SCRIPT_URL), деплой Apps Script и доступ «Anyone».',
+      )
     }
 
     const data = await res.json().catch(() => ({}))
@@ -49,7 +62,10 @@ async function requestJson(url, options) {
         await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
         continue
       }
-      throw new Error(data.error || 'Ошибка ответа сервера')
+      if (!data.error && res.status === 403) {
+        throw new Error('Доступ запрещён (403). В деплое Apps Script включите «Anyone».')
+      }
+      throw new Error(data.error || `Ошибка ответа сервера (${res.status})`)
     }
     if (data && data.error) {
       throw new Error(data.error)
@@ -301,6 +317,13 @@ function offlineWriteoffsState() {
 
 function persistOfflineWriteoffs(state) {
   writeOffline(OFFLINE_KEYS.writeoffs, state)
+}
+
+/** Сохранить снимок списаний в localStorage (после успешной записи при сбое повторной загрузки). */
+export function syncWriteoffsOfflineCache(writeoffs) {
+  if (writeoffs && typeof writeoffs === 'object') {
+    writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
+  }
 }
 
 export async function fetchSchedule() {

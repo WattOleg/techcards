@@ -1966,6 +1966,25 @@ h1 {
   width: 100%;
 }
 
+.writeoff-btn-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.writeoff-btn-inner .schedule-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.btn-dark .schedule-loading-spinner,
+.schedule-toolbar-icon-btn.btn-dark .schedule-loading-spinner {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+
 .writeoff-template-row,
 .writeoff-history-row {
   display: flex;
