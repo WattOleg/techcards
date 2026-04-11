@@ -573,6 +573,7 @@ function App() {
                     loading: writeoffsLoading,
                     saving: writeoffsSaving,
                     saveError: writeoffsSaveError,
+                    onClearSaveError: () => setWriteoffsSaveError(''),
                   }
                 : null
             }

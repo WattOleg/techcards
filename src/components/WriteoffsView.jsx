@@ -44,6 +44,7 @@ export default function WriteoffsView({
   saving,
   loading,
   saveError,
+  onClearSaveError,
 }) {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
@@ -95,6 +96,8 @@ export default function WriteoffsView({
   const busy = Boolean(
     saving || loading || appendSubmitting || reloadSubmitting || templateSubmitting,
   )
+
+  const bannerError = formError || saveError || ''
 
   const addEntry = async () => {
     const employee = draft.employee.trim()
@@ -252,9 +255,22 @@ export default function WriteoffsView({
           <ToolbarIcon type="download" />
         </button>
       </div>
-      {saveError ? <p className="error">{saveError}</p> : null}
+      {bannerError ? (
+        <div className="writeoffs-banner-error" role="alert">
+          <p className="error writeoffs-banner-text">{bannerError}</p>
+          <button
+            type="button"
+            className="ghost-btn writeoffs-banner-dismiss"
+            onClick={() => {
+              setFormError('')
+              onClearSaveError?.()
+            }}
+          >
+            Закрыть
+          </button>
+        </div>
+      ) : null}
       {saveHint ? <p className="muted small">{saveHint}</p> : null}
-      {formError ? <p className="error">{formError}</p> : null}
       {loading ? <div className="schedule-loading">Загрузка списаний...</div> : null}
 
       <div className="schedule-employees card-primary">

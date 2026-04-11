@@ -7,10 +7,9 @@ const SCHEDULE_SHEET_NAME = '_SCHEDULE'
 /** Месячные листы: _SCHEDULE_2026-03 (JSON смен + недостача за месяц) */
 const SCHEDULE_MONTH_PREFIX = '_SCHEDULE_'
 const STATS_SHEET_NAME = '_APP_STATS'
-/** Только этот лист: без чтения старого _WRITEOFFS / JSON. A–H: позиция, кол-во, ед., тип, сотрудник, дата, причина, UUID. */
-const WRITEOFFS_LOG_SHEET = '_WRITE_LOG_'
-/** Шаблоны отдельно. A–G: название, продукт, кол-во, ед., тип, причина, id */
-const WRITEOFFS_TPL_SHEET = '_WRITE_TPL_'
+/** Лента списаний: A–H — позиция, кол-во, ед., тип, сотрудник, дата, причина, UUID. Сначала ищем «старые» имена без лишнего _. */
+var WRITE_LOG_SHEET_NAMES = ['_WRITE_LOG', '_WRITE_LOG_']
+var WRITE_TPL_SHEET_NAMES = ['_WRITE_TPL', '_WRITE_TPL_']
 
 function doGet(e) {
   const action = e.parameter.action
@@ -71,19 +70,27 @@ function normalizeWriteoffTemplate_(t) {
   }
 }
 
+function getFirstExistingSheet_(ss, names) {
+  for (var i = 0; i < names.length; i++) {
+    var sh = ss.getSheetByName(names[i])
+    if (sh) return sh
+  }
+  return null
+}
+
 function getWriteLogSheet_(ss) {
-  let sh = ss.getSheetByName(WRITEOFFS_LOG_SHEET)
+  var sh = getFirstExistingSheet_(ss, WRITE_LOG_SHEET_NAMES)
   if (!sh) {
-    sh = ss.insertSheet(WRITEOFFS_LOG_SHEET)
+    sh = ss.insertSheet(WRITE_LOG_SHEET_NAMES[0])
     sh.hideSheet()
   }
   return sh
 }
 
 function getWriteTplSheet_(ss) {
-  let sh = ss.getSheetByName(WRITEOFFS_TPL_SHEET)
+  var sh = getFirstExistingSheet_(ss, WRITE_TPL_SHEET_NAMES)
   if (!sh) {
-    sh = ss.insertSheet(WRITEOFFS_TPL_SHEET)
+    sh = ss.insertSheet(WRITE_TPL_SHEET_NAMES[0])
     sh.hideSheet()
   }
   return sh
@@ -102,7 +109,7 @@ function readWriteLogEntries_(sheet) {
     const type = typRaw === 'move' || typRaw === 'перемещение' ? 'move' : 'writeoff'
     const hid = String(row[7] || '').trim()
     const id = hid || 'wr_row_' + (r + 1)
-    const date = normalizeWriteoffDateYmd_(String(row[5] || '').trim())
+    const date = normalizeWriteoffDateYmd_(row[5])
     out.push({
       id: id,
       item: item,
@@ -141,19 +148,41 @@ function readWriteTplRows_(sheet) {
   return out
 }
 
-function normalizeWriteoffDateYmd_(s) {
-  const t = String(s || '').trim()
+function normalizeWriteoffDateYmd_(value) {
+  var tz = Session.getScriptTimeZone()
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    var dt = /** @type {Date} */ (value)
+    if (isNaN(dt.getTime())) return ''
+    return Utilities.formatDate(dt, tz, 'yyyy-MM-dd')
+  }
+  if (typeof value === 'number' && value > 200 && value < 80000) {
+    var base = new Date(1899, 11, 30)
+    var serial = new Date(base.getTime() + Math.round(value) * 24 * 60 * 60 * 1000)
+    if (isNaN(serial.getTime())) return ''
+    return Utilities.formatDate(serial, tz, 'yyyy-MM-dd')
+  }
+  var t = String(value || '').trim()
   if (!t) return ''
-  const iso = t.match(/^(\d{4}-\d{2}-\d{2})/)
+  var iso = t.match(/^(\d{4}-\d{2}-\d{2})/)
   if (iso) return iso[1]
-  if (t.indexOf('T') > 0) return t.slice(0, 10)
-  const dm = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/)
+  var tIdx = t.indexOf('T')
+  if (tIdx > 0) {
+    var head = t.substring(0, tIdx)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(head)) return head
+  }
+  var dm = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/)
   if (dm) {
-    const d = dm[1].length === 1 ? '0' + dm[1] : dm[1]
-    const mo = dm[2].length === 1 ? '0' + dm[2] : dm[2]
+    var d = dm[1].length === 1 ? '0' + dm[1] : dm[1]
+    var mo = dm[2].length === 1 ? '0' + dm[2] : dm[2]
     return dm[3] + '-' + mo + '-' + d
   }
-  return t.slice(0, 10)
+  var slash = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (slash) {
+    var d2 = slash[1].length === 1 ? '0' + slash[1] : slash[1]
+    var mo2 = slash[2].length === 1 ? '0' + slash[2] : slash[2]
+    return slash[3] + '-' + mo2 + '-' + d2
+  }
+  return ''
 }
 
 function getWriteoffs() {
@@ -190,7 +219,7 @@ function appendSimpleWriteoff_(params) {
   const unit = String(params.unit || '').trim() || 'гр'
   const typ = String(params.typ || params.type || '').trim() === 'move' ? 'move' : 'writeoff'
   const employee = String(params.emp || params.employee || '').trim()
-  const date = normalizeWriteoffDateYmd_(String(params.date || '').trim())
+  const date = normalizeWriteoffDateYmd_(params.date)
   const reason = String(params.reason || '').trim()
   if (!item || !qty || !employee || !date) return jsonResponse({ error: 'нужны item, qty, emp, date' })
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
@@ -241,17 +270,27 @@ function updateSimpleWriteoff_(params) {
   const unit = String(params.unit || '').trim() || 'гр'
   const typ = String(params.typ || '').trim() === 'move' ? 'move' : 'writeoff'
   const employee = String(params.emp || params.employee || '').trim()
-  const date = String(params.date || '').trim()
+  const dateNorm = normalizeWriteoffDateYmd_(params.date)
   const reason = String(params.reason || '').trim()
-  if (!id || !item || !qty || !employee || !date) return jsonResponse({ error: 'нужны id, item, qty, emp, date' })
+  if (!id || !item || !qty || !employee || !dateNorm) return jsonResponse({ error: 'нужны id, item, qty, emp, date' })
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
   const sheet = getWriteLogSheet_(ss)
   const row = findLogRowByEntryId_(sheet, id)
   if (row < 0) return jsonResponse({ error: 'запись не найдена' })
-  sheet.getRange(row, 1, row, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
+  sheet.getRange(row, 1, row, 8).setValues([[item, qty, unit, typ, employee, dateNorm, reason, id]])
   return jsonResponse({
     success: true,
-    entry: { id: id, item: item, qty: qty, unit: unit, type: typ, employee: employee, date: date, reason: reason, createdAt: date },
+    entry: {
+      id: id,
+      item: item,
+      qty: qty,
+      unit: unit,
+      type: typ,
+      employee: employee,
+      date: dateNorm,
+      reason: reason,
+      createdAt: dateNorm,
+    },
   })
 }
 
@@ -425,8 +464,8 @@ function shouldIncludeSheetInCardList_(sheetName) {
     n === '_WRITEOFFS' ||
     n === '_WRITE_LOG' ||
     n === '_WRITE_TPL' ||
-    n === WRITEOFFS_LOG_SHEET ||
-    n === WRITEOFFS_TPL_SHEET
+    n === '_WRITE_LOG_' ||
+    n === '_WRITE_TPL_'
   )
     return false
   if (n.indexOf(SCHEDULE_MONTH_PREFIX) === 0 && n.length > SCHEDULE_MONTH_PREFIX.length) return false

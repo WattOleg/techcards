@@ -26,7 +26,6 @@ function writeOffline(key, value) {
 }
 
 async function requestJson(url, options) {
-  const method = String(options?.method || 'GET').toUpperCase()
   const retries = 2
   let lastError = null
 
@@ -52,7 +51,15 @@ async function requestJson(url, options) {
       )
     }
 
-    const data = await res.json().catch(() => ({}))
+    const text = await res.text()
+    let data = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      throw new Error(
+        'Ответ сервера не JSON (часто неверный URL деплоя или страница входа Google). Проверьте VITE_APPS_SCRIPT_URL.',
+      )
+    }
     if (!res.ok) {
       if (attempt < retries && res.status >= 500) {
         await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
@@ -429,33 +436,34 @@ export async function mutateWriteoffs(payload, pin) {
   if (op === 'append' && payload.entry) {
     const e = payload.entry
     const dateStr = String(e.date || '').slice(0, 10)
-    const postPayload = {
-      action: 'appendSimpleWriteoffPost',
-      pin: pinStr,
+    const fields = {
       item: String(e.item || '').trim(),
       qty: String(e.qty || '').trim(),
       unit: String(e.unit || '').trim() || 'гр',
       typ: e.type === 'move' ? 'move' : 'writeoff',
       emp: String(e.employee || '').trim(),
       date: dateStr,
+      reason: String(e.reason || '').trim().slice(0, 500),
+    }
+    const getUrl = buildUrl('appendSimpleWriteoff', fields)
+    const postPayload = {
+      action: 'appendSimpleWriteoffPost',
+      pin: pinStr,
+      item: fields.item,
+      qty: fields.qty,
+      unit: fields.unit,
+      typ: fields.typ,
+      emp: fields.emp,
+      date: dateStr,
       reason: String(e.reason || '').trim().slice(0, 4000),
     }
     try {
+      return await requestJson(getUrl)
+    } catch {
       return await requestJson(baseUrl, {
         method: 'POST',
         body: JSON.stringify(postPayload),
       })
-    } catch {
-      const url = buildUrl('appendSimpleWriteoff', {
-        item: postPayload.item,
-        qty: postPayload.qty,
-        unit: postPayload.unit,
-        typ: postPayload.typ,
-        emp: postPayload.emp,
-        date: postPayload.date,
-        reason: postPayload.reason.slice(0, 500),
-      })
-      return await requestJson(url)
     }
   }
 

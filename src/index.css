@@ -1912,6 +1912,28 @@ h1 {
   gap: 12px;
 }
 
+.writeoffs-banner-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff5f5;
+  border: 1px solid #f0caca;
+}
+
+.writeoffs-banner-text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.writeoffs-banner-dismiss {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
 .writeoff-form-date-block {
   display: flex;
   flex-wrap: wrap;

@@ -46,16 +46,25 @@ export function formatWriteoffDateRuFromEntry(e) {
   return '—'
 }
 
+function partsFromYmdOrDm(raw) {
+  const s = String(raw || '').trim()
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (iso) {
+    return { y: Number(iso[1]), mo: Number(iso[2]), d: Number(iso[3]) }
+  }
+  const dm = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\b/)
+  if (dm) {
+    return { y: Number(dm[3]), mo: Number(dm[2]), d: Number(dm[1]) }
+  }
+  return null
+}
+
 export function formatWriteoffDateRuFromYmd(ymd) {
-  const parts = String(ymd || '')
-    .slice(0, 10)
-    .split('-')
-    .map(Number)
-  const y = parts[0]
-  const mo = parts[1]
-  const d = parts[2]
-  if (!y || !mo || !d) return String(ymd || '').slice(0, 10) || '—'
+  const parts = partsFromYmdOrDm(ymd)
+  if (!parts) return '—'
+  const { y, mo, d } = parts
+  if (!y || !mo || !d || mo < 1 || mo > 12 || d < 1 || d > 31) return String(ymd || '').trim().slice(0, 16) || '—'
   const monthName = RU_MONTHS_GEN[mo - 1]
-  if (!monthName) return `${ymd}`
+  if (!monthName) return `${d}.${mo}.${y}`
   return `${d} ${monthName} ${y} г.`
 }
