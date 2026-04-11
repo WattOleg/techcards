@@ -7,10 +7,11 @@ const SCHEDULE_SHEET_NAME = '_SCHEDULE'
 /** Месячные листы: _SCHEDULE_2026-03 (JSON смен + недостача за месяц) */
 const SCHEDULE_MONTH_PREFIX = '_SCHEDULE_'
 const STATS_SHEET_NAME = '_APP_STATS'
-const WRITEOFFS_SHEET_NAME = '_WRITEOFFS'
-/** Строка 1: A1 — JSON { templates: [...] }. Строка 2 — заголовки. Со строки 3 — записи списаний. */
-const WRITEOFFS_DATA_ROW_START = 3
-const WRITEOFFS_HEADERS = ['id', 'date', 'employee', 'item', 'qty', 'unit', 'type', 'reason', 'createdAt']
+/** Лист списаний: A наименование, B кол-во, C ед.изм., D действие, E сотрудник, F дата, G причина, H id (UUID). Строка 1 = первая запись. */
+const WRITEOFFS_LOG_SHEET = '_WRITE_LOG'
+/** Шаблоны: A название, B продукт, C кол-во, D ед., E тип, F причина */
+const WRITEOFFS_TPL_SHEET = '_WRITE_TPL'
+const WRITEOFFS_LEGACY_SHEET = '_WRITEOFFS'
 
 function doGet(e) {
   const action = e.parameter.action
@@ -20,36 +21,11 @@ function doGet(e) {
   if (action === 'getSections') return getSections()
   if (action === 'getSchedule') return getSchedule()
   if (action === 'getWriteoffs') return getWriteoffs()
-  /** Надёжная запись списаний с мобильных: тот же контракт, что POST updateWriteoffs, но через GET (без CORS preflight). */
-  if (action === 'writeoffsMutate') return writeoffsMutateFromGet_(e.parameter)
+  if (action === 'appendSimpleWriteoff') return appendSimpleWriteoff_(e.parameter)
+  if (action === 'deleteSimpleWriteoff') return deleteSimpleWriteoff_(e.parameter)
+  if (action === 'updateSimpleWriteoff') return updateSimpleWriteoff_(e.parameter)
   if (action === 'logVisit') return logAppVisit()
   return jsonResponse({ error: 'unknown action' })
-}
-
-function writeoffsMutateFromGet_(params) {
-  const raw = params.payload != null ? String(params.payload) : ''
-  if (!raw) return jsonResponse({ error: 'payload required' })
-  let inner
-  try {
-    inner = JSON.parse(raw)
-  } catch (err) {
-    return jsonResponse({ error: 'Некорректный payload' })
-  }
-  if (!inner || typeof inner !== 'object') return jsonResponse({ error: 'invalid payload' })
-  const pin = params.pin != null ? String(params.pin) : ''
-  const out = updateWriteoffs({
-    pin: pin,
-    op: inner.op,
-    entry: inner.entry,
-    id: inner.id,
-    templates: inner.templates,
-  })
-  const cb = params.callback != null ? String(params.callback).replace(/[^a-zA-Z0-9_$]/g, '') : ''
-  if (cb.length >= 8 && cb.length <= 64 && /^[a-zA-Z_$]/.test(cb)) {
-    const jsonBody = out.getContent()
-    return ContentService.createTextOutput(cb + '(' + jsonBody + ');').setMimeType(ContentService.MimeType.JAVASCRIPT)
-  }
-  return out
 }
 
 function doPost(e) {
@@ -70,20 +46,6 @@ function doPost(e) {
   return jsonResponse({ error: 'unknown action' })
 }
 
-function normalizeWriteoffEntry_(e) {
-  return {
-    id: String((e && e.id) || '').trim() || Utilities.getUuid(),
-    date: String((e && e.date) || '').trim(),
-    employee: String((e && e.employee) || '').trim(),
-    item: String((e && e.item) || '').trim(),
-    qty: String((e && e.qty) || '').trim(),
-    unit: String((e && e.unit) || '').trim(),
-    type: String((e && e.type) || '').trim() === 'move' ? 'move' : 'writeoff',
-    reason: String((e && e.reason) || '').trim(),
-    createdAt: String((e && e.createdAt) || '').trim(),
-  }
-}
-
 function normalizeWriteoffTemplate_(t) {
   return {
     id: String((t && t.id) || '').trim() || Utilities.getUuid(),
@@ -96,153 +58,238 @@ function normalizeWriteoffTemplate_(t) {
   }
 }
 
-function getWriteoffsSheet_(ss) {
-  let sheet = ss.getSheetByName(WRITEOFFS_SHEET_NAME)
-  if (!sheet) {
-    sheet = ss.insertSheet(WRITEOFFS_SHEET_NAME)
-    sheet.getRange(1, 1).setValue(JSON.stringify({ templates: [] }))
-    sheet.getRange(2, 1, 2, WRITEOFFS_HEADERS.length).setValues([WRITEOFFS_HEADERS])
-    sheet.hideSheet()
+function getWriteLogSheet_(ss) {
+  let sh = ss.getSheetByName(WRITEOFFS_LOG_SHEET)
+  if (!sh) {
+    sh = ss.insertSheet(WRITEOFFS_LOG_SHEET)
+    sh.hideSheet()
+    maybeMigrateLegacyWriteoffsToLog_(ss, sh)
   }
-  return sheet
+  return sh
 }
 
-function ensureWriteoffHeaderRow_(sheet) {
-  const cell = String(sheet.getRange(2, 1).getValue() || '').trim()
-  if (cell !== 'id') {
-    sheet.getRange(2, 1, 2, WRITEOFFS_HEADERS.length).setValues([WRITEOFFS_HEADERS])
+function getWriteTplSheet_(ss) {
+  let sh = ss.getSheetByName(WRITEOFFS_TPL_SHEET)
+  if (!sh) {
+    sh = ss.insertSheet(WRITEOFFS_TPL_SHEET)
+    sh.hideSheet()
+    maybeMigrateTemplatesFromLegacy_(ss, sh)
   }
+  return sh
 }
 
-function migrateWriteoffsIfNeeded_(sheet) {
-  const raw = sheet.getRange(1, 1).getValue()
-  if (!raw || !String(raw).trim()) return
-  let parsed
+function maybeMigrateLegacyWriteoffsToLog_(ss, logSh) {
+  const key = 'migrated_write_log_v3'
+  const props = PropertiesService.getScriptProperties()
+  if (props.getProperty(key)) return
+  const legacy = ss.getSheetByName(WRITEOFFS_LEGACY_SHEET)
+  if (!legacy || logSh.getLastRow() > 0) {
+    props.setProperty(key, '1')
+    return
+  }
   try {
-    parsed = JSON.parse(String(raw))
-  } catch (e) {
-    return
-  }
-  if (!parsed || typeof parsed !== 'object') return
-  if (Array.isArray(parsed.entries) && parsed.entries.length > 0) {
-    ensureWriteoffHeaderRow_(sheet)
-    const entries = parsed.entries
-      .map(normalizeWriteoffEntry_)
-      .filter(function (e) {
-        return e.date && e.employee && e.item && e.qty
-      })
-    for (var i = 0; i < entries.length; i++) {
-      var e = entries[i]
-      sheet.appendRow([e.id, e.date, e.employee, e.item, e.qty, e.unit, e.type, e.reason, e.createdAt])
+    const lr = legacy.getLastRow()
+    if (lr >= 3) {
+      const data = legacy.getRange(3, 1, lr, 9).getValues()
+      for (var i = 0; i < data.length; i++) {
+        const row = data[i]
+        const item = String(row[3] || '').trim()
+        if (!item) continue
+        const id = String(row[0] || '').trim() || Utilities.getUuid()
+        const typ = String(row[6] || '').trim() === 'move' ? 'move' : 'writeoff'
+        logSh.appendRow([
+          item,
+          String(row[4] || '').trim(),
+          String(row[5] || '').trim() || 'гр',
+          typ,
+          String(row[2] || '').trim(),
+          String(row[1] || '').trim(),
+          String(row[7] || '').trim(),
+          id,
+        ])
+      }
     }
-    const templates = Array.isArray(parsed.templates) ? parsed.templates : []
-    sheet.getRange(1, 1).setValue(JSON.stringify({ templates: templates }))
-    return
-  }
-  if (parsed.entries !== undefined) {
-    const templates = Array.isArray(parsed.templates) ? parsed.templates : []
-    sheet.getRange(1, 1).setValue(JSON.stringify({ templates: templates }))
-  }
+  } catch (e) {}
+  props.setProperty(key, '1')
 }
 
-function readEntriesFromSheet_(sheet) {
-  const lastRow = sheet.getLastRow()
-  if (lastRow < WRITEOFFS_DATA_ROW_START) return []
-  const data = sheet.getRange(WRITEOFFS_DATA_ROW_START, 1, lastRow, 9).getValues()
+function maybeMigrateTemplatesFromLegacy_(ss, tplSh) {
+  const key = 'migrated_write_tpl_v1'
+  const props = PropertiesService.getScriptProperties()
+  if (props.getProperty(key)) return
+  const legacy = ss.getSheetByName(WRITEOFFS_LEGACY_SHEET)
+  if (!legacy) {
+    props.setProperty(key, '1')
+    return
+  }
+  try {
+    const raw = legacy.getRange(1, 1).getValue()
+    if (!raw || String(raw).trim().charAt(0) !== '{') {
+      props.setProperty(key, '1')
+      return
+    }
+    const parsed = JSON.parse(String(raw))
+    const arr = Array.isArray(parsed.templates) ? parsed.templates : []
+    for (var j = 0; j < arr.length; j++) {
+      const t = normalizeWriteoffTemplate_(arr[j])
+      if (t.title && t.item && t.qty) {
+        const tid = String(t.id || '').trim() || Utilities.getUuid()
+        tplSh.appendRow([t.title, t.item, t.qty, t.unit || 'гр', t.type, t.reason, tid])
+      }
+    }
+  } catch (e) {}
+  props.setProperty(key, '1')
+}
+
+function readWriteLogEntries_(sheet) {
+  const last = sheet.getLastRow()
+  if (last < 1) return []
+  const data = sheet.getRange(1, 1, last, 8).getValues()
   const out = []
   for (var r = 0; r < data.length; r++) {
     const row = data[r]
-    const id = String(row[0] || '').trim()
-    if (!id) continue
-    const entry = {
+    const item = String(row[0] || '').trim()
+    if (!item) continue
+    const typRaw = String(row[3] || '').trim()
+    const type = typRaw === 'move' || typRaw === 'перемещение' ? 'move' : 'writeoff'
+    const hid = String(row[7] || '').trim()
+    const id = hid || 'wr_row_' + (r + 1)
+    const date = String(row[5] || '').trim()
+    out.push({
       id: id,
-      date: String(row[1] || '').trim(),
-      employee: String(row[2] || '').trim(),
-      item: String(row[3] || '').trim(),
-      qty: String(row[4] || '').trim(),
-      unit: String(row[5] || '').trim(),
-      type: String(row[6] || '').trim() === 'move' ? 'move' : 'writeoff',
-      reason: String(row[7] || '').trim(),
-      createdAt: String(row[8] || '').trim(),
-    }
-    if (entry.date && entry.employee && entry.item && entry.qty) out.push(entry)
+      item: item,
+      qty: String(row[1] || '').trim(),
+      unit: String(row[2] || '').trim() || 'гр',
+      type: type,
+      employee: String(row[4] || '').trim(),
+      date: date,
+      reason: String(row[6] || '').trim(),
+      createdAt: date || new Date().toISOString(),
+    })
   }
   return out
 }
 
-function parseTemplatesFromA1_(raw) {
-  if (!raw || !String(raw).trim()) return []
-  try {
-    const parsed = JSON.parse(String(raw))
-    if (!parsed || typeof parsed !== 'object') return []
-    if (Array.isArray(parsed.templates)) return parsed.templates
-    return []
-  } catch (e) {
-    return []
+function readWriteTplRows_(sheet) {
+  const last = sheet.getLastRow()
+  if (last < 1) return []
+  const data = sheet.getRange(1, 1, last, 7).getValues()
+  const out = []
+  for (var i = 0; i < data.length; i++) {
+    const row = data[i]
+    const title = String(row[0] || '').trim()
+    if (!title || !String(row[2] || '').trim()) continue
+    const hid = String(row[6] || '').trim()
+    out.push({
+      id: hid || 'tpl_r' + (i + 1),
+      title: title,
+      item: String(row[1] || '').trim(),
+      qty: String(row[2] || '').trim(),
+      unit: String(row[3] || '').trim() || 'гр',
+      type: String(row[4] || '').trim() === 'move' ? 'move' : 'writeoff',
+      reason: String(row[5] || '').trim(),
+    })
   }
+  return out
 }
 
 function getWriteoffs() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const sheet = getWriteoffsSheet_(ss)
-  migrateWriteoffsIfNeeded_(sheet)
-  ensureWriteoffHeaderRow_(sheet)
-  const raw = sheet.getRange(1, 1).getValue()
-  const templates = parseTemplatesFromA1_(raw)
-    .map(normalizeWriteoffTemplate_)
-    .filter(function (t) {
-      return t.title && t.item && t.qty
-    })
-  const entries = readEntriesFromSheet_(sheet)
+  const logSh = getWriteLogSheet_(ss)
+  const tplSh = getWriteTplSheet_(ss)
+  const entries = readWriteLogEntries_(logSh)
+  const templates = readWriteTplRows_(tplSh)
   return jsonResponse({ writeoffs: { entries: entries, templates: templates } })
 }
 
-function findWriteoffRowById_(sheet, id) {
+function findLogRowByEntryId_(sheet, id) {
   const target = String(id || '').trim()
   if (!target) return -1
-  const lastRow = sheet.getLastRow()
-  if (lastRow < WRITEOFFS_DATA_ROW_START) return -1
-  const col = sheet.getRange(WRITEOFFS_DATA_ROW_START, 1, lastRow, 1).getValues()
-  for (var i = 0; i < col.length; i++) {
-    if (String(col[i][0] || '').trim() === target) return WRITEOFFS_DATA_ROW_START + i
+  const last = sheet.getLastRow()
+  if (last < 1) return -1
+  const ids = sheet.getRange(1, 8, last, 8).getValues()
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0] || '').trim() === target) return i + 1
   }
   return -1
 }
 
-function appendWriteoffEntry_(body) {
-  let e = normalizeWriteoffEntry_(body.entry)
-  if (!e.date || !e.employee || !e.item || !e.qty) return jsonResponse({ error: 'entry: нужны date, employee, item, qty' })
-  if (!e.createdAt) e.createdAt = new Date().toISOString()
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const sheet = getWriteoffsSheet_(ss)
-  migrateWriteoffsIfNeeded_(sheet)
-  ensureWriteoffHeaderRow_(sheet)
-  sheet.appendRow([e.id, e.date, e.employee, e.item, e.qty, e.unit, e.type, e.reason, e.createdAt])
-  return jsonResponse({ success: true, entry: e })
+function simpleWriteoffPinOk_(params) {
+  const p = params.pin != null ? String(params.pin) : ''
+  if (p && p !== PIN) return false
+  return true
 }
 
-function deleteWriteoffEntry_(body) {
-  const id = String(body.id || '').trim()
-  if (!id) return jsonResponse({ error: 'id is required' })
+function appendSimpleWriteoff_(params) {
+  if (!simpleWriteoffPinOk_(params)) return jsonResponse({ error: 'invalid pin' })
+  const item = String(params.item || '').trim()
+  const qty = String(params.qty || '').trim()
+  const unit = String(params.unit || '').trim() || 'гр'
+  const typ = String(params.typ || params.type || '').trim() === 'move' ? 'move' : 'writeoff'
+  const employee = String(params.emp || params.employee || '').trim()
+  const date = String(params.date || '').trim()
+  const reason = String(params.reason || '').trim()
+  if (!item || !qty || !employee || !date) return jsonResponse({ error: 'нужны item, qty, emp, date' })
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const sheet = getWriteoffsSheet_(ss)
-  migrateWriteoffsIfNeeded_(sheet)
-  const row = findWriteoffRowById_(sheet, id)
+  const sheet = getWriteLogSheet_(ss)
+  const nextRow = getNextEmptyRowInColumnA_(sheet)
+  const id = Utilities.getUuid()
+  sheet.getRange(nextRow, 1, nextRow, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
+  const entry = {
+    id: id,
+    item: item,
+    qty: qty,
+    unit: unit,
+    type: typ,
+    employee: employee,
+    date: date,
+    reason: reason,
+    createdAt: date,
+  }
+  return jsonResponse({ success: true, entry: entry })
+}
+
+function getNextEmptyRowInColumnA_(sheet) {
+  const lr = Math.max(sheet.getLastRow(), 1)
+  const colA = sheet.getRange(1, 1, lr, 1).getValues()
+  for (var i = 0; i < colA.length; i++) {
+    if (!String(colA[i][0] || '').trim()) return i + 1
+  }
+  return lr + 1
+}
+
+function deleteSimpleWriteoff_(params) {
+  if (!simpleWriteoffPinOk_(params)) return jsonResponse({ error: 'invalid pin' })
+  const id = String(params.id || '').trim()
+  if (!id) return jsonResponse({ error: 'id required' })
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
+  const sheet = getWriteLogSheet_(ss)
+  const row = findLogRowByEntryId_(sheet, id)
   if (row < 0) return jsonResponse({ error: 'запись не найдена' })
   sheet.deleteRow(row)
   return jsonResponse({ success: true })
 }
 
-function updateWriteoffEntry_(body) {
-  const e = normalizeWriteoffEntry_(body.entry)
-  if (!e.id || !e.date || !e.employee || !e.item || !e.qty) return jsonResponse({ error: 'entry: нужны id, date, employee, item, qty' })
+function updateSimpleWriteoff_(params) {
+  if (!simpleWriteoffPinOk_(params)) return jsonResponse({ error: 'invalid pin' })
+  const id = String(params.id || '').trim()
+  const item = String(params.item || '').trim()
+  const qty = String(params.qty || '').trim()
+  const unit = String(params.unit || '').trim() || 'гр'
+  const typ = String(params.typ || '').trim() === 'move' ? 'move' : 'writeoff'
+  const employee = String(params.emp || params.employee || '').trim()
+  const date = String(params.date || '').trim()
+  const reason = String(params.reason || '').trim()
+  if (!id || !item || !qty || !employee || !date) return jsonResponse({ error: 'нужны id, item, qty, emp, date' })
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const sheet = getWriteoffsSheet_(ss)
-  migrateWriteoffsIfNeeded_(sheet)
-  const row = findWriteoffRowById_(sheet, e.id)
+  const sheet = getWriteLogSheet_(ss)
+  const row = findLogRowByEntryId_(sheet, id)
   if (row < 0) return jsonResponse({ error: 'запись не найдена' })
-  sheet.getRange(row, 1, row, 9).setValues([[e.id, e.date, e.employee, e.item, e.qty, e.unit, e.type, e.reason, e.createdAt]])
-  return jsonResponse({ success: true, entry: e })
+  sheet.getRange(row, 1, row, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
+  return jsonResponse({
+    success: true,
+    entry: { id: id, item: item, qty: qty, unit: unit, type: typ, employee: employee, date: date, reason: reason, createdAt: date },
+  })
 }
 
 function updateWriteoffTemplates_(body) {
@@ -254,20 +301,36 @@ function updateWriteoffTemplates_(body) {
       return t.title && t.item && t.qty
     })
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const sheet = getWriteoffsSheet_(ss)
-  migrateWriteoffsIfNeeded_(sheet)
-  sheet.getRange(1, 1).setValue(JSON.stringify({ templates: templates }))
+  const sh = getWriteTplSheet_(ss)
+  const last = sh.getLastRow()
+  if (last > 0) sh.getRange(1, 1, last, 7).clearContent()
+  for (var i = 0; i < templates.length; i++) {
+    const t = templates[i]
+    const tid = String(t.id || '').trim() || Utilities.getUuid()
+    sh.getRange(i + 1, 1, i + 1, 7).setValues([[t.title, t.item, t.qty, t.unit || 'гр', t.type, t.reason, tid]])
+  }
   return jsonResponse({ success: true })
 }
 
 function updateWriteoffs(body) {
   if (body.pin && body.pin !== PIN) return jsonResponse({ error: 'invalid pin' })
   const op = String(body.op || '').trim()
-  if (op === 'append') return appendWriteoffEntry_(body)
-  if (op === 'delete') return deleteWriteoffEntry_(body)
-  if (op === 'update') return updateWriteoffEntry_(body)
   if (op === 'templates') return updateWriteoffTemplates_(body)
-  return jsonResponse({ error: 'Укажите op: append, delete, update, templates' })
+  if (op === 'update' && body.entry) {
+    const e = body.entry
+    return updateSimpleWriteoff_({
+      pin: body.pin,
+      id: String(e.id || ''),
+      item: e.item,
+      qty: e.qty,
+      unit: e.unit,
+      typ: e.type,
+      emp: e.employee,
+      date: e.date,
+      reason: e.reason,
+    })
+  }
+  return jsonResponse({ error: 'Используйте GET для append/delete/update или POST op=templates' })
 }
 
 function getDefaultSectionsObject() {
@@ -392,7 +455,15 @@ function updateSection(body) {
 
 function shouldIncludeSheetInCardList_(sheetName) {
   const n = String(sheetName || '')
-  if (n === SECTIONS_SHEET_NAME || n === SCHEDULE_SHEET_NAME || n === STATS_SHEET_NAME || n === WRITEOFFS_SHEET_NAME) return false
+  if (
+    n === SECTIONS_SHEET_NAME ||
+    n === SCHEDULE_SHEET_NAME ||
+    n === STATS_SHEET_NAME ||
+    n === WRITEOFFS_LEGACY_SHEET ||
+    n === WRITEOFFS_LOG_SHEET ||
+    n === WRITEOFFS_TPL_SHEET
+  )
+    return false
   if (n.indexOf(SCHEDULE_MONTH_PREFIX) === 0 && n.length > SCHEDULE_MONTH_PREFIX.length) return false
   return true
 }

@@ -68,65 +68,6 @@ async function requestJson(url, options) {
   throw lastError || new Error('Ошибка сети')
 }
 
-/**
- * Запасной канал для списаний: <script src="...&callback=fn"> обходит часть ограничений fetch/CORS.
- * Сервер возвращает JavaScript: fn({...json...});
- */
-function writeoffsMutateJsonp(baseUrl, inner, pin) {
-  if (typeof document === 'undefined') {
-    return Promise.reject(new Error('JSONP недоступен'))
-  }
-  return new Promise((resolve, reject) => {
-    const cbName = `tkW_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
-    let u
-    try {
-      u = new URL(String(baseUrl).trim())
-      u.searchParams.set('action', 'writeoffsMutate')
-      u.searchParams.set('pin', String(pin || ''))
-      u.searchParams.set('payload', JSON.stringify(inner))
-      u.searchParams.set('_cb', String(Date.now()))
-      u.searchParams.set('callback', cbName)
-    } catch {
-      reject(new Error('Некорректный URL'))
-      return
-    }
-    const url = u.toString()
-    if (url.length > 7500) {
-      reject(new Error('Слишком длинный запрос для JSONP'))
-      return
-    }
-
-    const script = document.createElement('script')
-    const timer = window.setTimeout(() => {
-      cleanup()
-      reject(new Error('Таймаут JSONP'))
-    }, 45000)
-
-    function cleanup() {
-      window.clearTimeout(timer)
-      try {
-        delete window[cbName]
-      } catch {
-        window[cbName] = undefined
-      }
-      if (script.parentNode) script.parentNode.removeChild(script)
-    }
-
-    window[cbName] = (data) => {
-      cleanup()
-      if (data && data.error) reject(new Error(data.error))
-      else resolve(data)
-    }
-
-    script.onerror = () => {
-      cleanup()
-      reject(new Error('JSONP: скрипт не загрузился'))
-    }
-    script.src = url
-    document.head.appendChild(script)
-  })
-}
-
 const mockCards = [
   {
     sheetName: 'Aphrodite',
@@ -422,7 +363,9 @@ export async function fetchWriteoffs() {
   }
 }
 
-/** Операции со списаниями: append / delete / update строки, templates — полная замена шаблонов в A1. */
+/**
+ * Списания: короткий GET к Apps Script (без JSON в query) + POST только для шаблонов.
+ */
 export async function mutateWriteoffs(payload, pin) {
   const op = String(payload?.op || '').trim()
   if (!op) throw new Error('Не указана операция')
@@ -453,59 +396,77 @@ export async function mutateWriteoffs(payload, pin) {
     throw new Error('Неверная операция')
   }
 
-  const body = { action: 'updateWriteoffs', pin, op }
-  if (payload.entry) body.entry = payload.entry
-  if (payload.id != null && payload.id !== '') body.id = payload.id
-  if (payload.templates) body.templates = payload.templates
-
-  const inner = { op }
-  if (payload.entry) inner.entry = payload.entry
-  if (payload.id != null && payload.id !== '') inner.id = payload.id
-  if (payload.templates) inner.templates = payload.templates
-
   const baseUrl = String(BASE_URL).trim()
-  let getUrl = null
-  try {
-    const u = new URL(baseUrl)
-    u.searchParams.set('action', 'writeoffsMutate')
-    u.searchParams.set('pin', String(pin || ''))
-    u.searchParams.set('payload', JSON.stringify(inner))
-    u.searchParams.set('_cb', String(Date.now()))
-    const built = u.toString()
-    if (built.length <= 7500) getUrl = built
-  } catch {
-    getUrl = null
-  }
+  const pinStr = String(pin || '')
 
-  const postOnce = () =>
-    requestJson(baseUrl, {
+  if (op === 'templates' && Array.isArray(payload.templates)) {
+    return await requestJson(baseUrl, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        action: 'updateWriteoffs',
+        pin: pinStr,
+        op: 'templates',
+        templates: payload.templates,
+      }),
     })
+  }
 
-  const errs = []
-  if (getUrl) {
-    try {
-      return await requestJson(getUrl)
-    } catch (e1) {
-      errs.push(String(e1?.message || e1))
-      try {
-        return await writeoffsMutateJsonp(baseUrl, inner, pin)
-      } catch (e2) {
-        errs.push(String(e2?.message || e2))
-      }
+  const buildUrl = (action, extra) => {
+    const u = new URL(baseUrl)
+    u.searchParams.set('action', action)
+    u.searchParams.set('pin', pinStr)
+    u.searchParams.set('_cb', String(Date.now()))
+    Object.keys(extra).forEach((k) => {
+      const v = extra[k]
+      if (v != null && v !== '') u.searchParams.set(k, String(v))
+    })
+    return u.toString()
+  }
+
+  if (op === 'append' && payload.entry) {
+    const e = payload.entry
+    const url = buildUrl('appendSimpleWriteoff', {
+      item: e.item || '',
+      qty: String(e.qty || ''),
+      unit: e.unit || '',
+      typ: e.type === 'move' ? 'move' : 'writeoff',
+      emp: e.employee || '',
+      date: e.date || '',
+      reason: String(e.reason || '').slice(0, 500),
+    })
+    return await requestJson(url)
+  }
+
+  if (op === 'delete' && payload.id != null && payload.id !== '') {
+    const url = buildUrl('deleteSimpleWriteoff', { id: String(payload.id) })
+    return await requestJson(url)
+  }
+
+  if (op === 'update' && payload.entry) {
+    const e = payload.entry
+    const url = buildUrl('updateSimpleWriteoff', {
+      id: String(e.id || ''),
+      item: e.item || '',
+      qty: String(e.qty || ''),
+      unit: e.unit || '',
+      typ: e.type === 'move' ? 'move' : 'writeoff',
+      emp: e.employee || '',
+      date: e.date || '',
+      reason: String(e.reason || '').slice(0, 500),
+    })
+    if (url.length <= 7200) {
+      return await requestJson(url)
     }
+    return await requestJson(baseUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'updateWriteoffs',
+        pin: pinStr,
+        op: 'update',
+        entry: payload.entry,
+      }),
+    })
   }
 
-  try {
-    return await postOnce()
-  } catch (e3) {
-    errs.push(String(e3?.message || e3))
-    throw new Error(
-      'Нет связи с Google Apps Script после GET, JSONP и POST. ' +
-        'Загрузка списаний могла показаться из кэша телефона — запись всегда требует сеть до script.google.com. ' +
-        'Проверьте: URL деплоя (/exec), «Anyone», новая версия скрипта, блокировки/VPN. ' +
-        errs.filter(Boolean).join(' | '),
-    )
-  }
+  throw new Error('Неверная операция')
 }
