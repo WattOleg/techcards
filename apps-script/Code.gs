@@ -43,7 +43,21 @@ function doPost(e) {
   if (body.action === 'updateSection') return updateSection(body)
   if (body.action === 'updateSchedule') return updateSchedule(body)
   if (body.action === 'updateWriteoffs') return updateWriteoffs(body)
+  if (body.action === 'appendSimpleWriteoffPost') return appendSimpleWriteoffPost_(body)
   return jsonResponse({ error: 'unknown action' })
+}
+
+function appendSimpleWriteoffPost_(body) {
+  return appendSimpleWriteoff_({
+    pin: body.pin,
+    item: body.item,
+    qty: body.qty,
+    unit: body.unit,
+    typ: body.typ || body.type,
+    emp: body.emp || body.employee,
+    date: body.date,
+    reason: body.reason,
+  })
 }
 
 function normalizeWriteoffTemplate_(t) {
@@ -372,7 +386,7 @@ function appendSimpleWriteoff_(params) {
   const unit = String(params.unit || '').trim() || 'гр'
   const typ = String(params.typ || params.type || '').trim() === 'move' ? 'move' : 'writeoff'
   const employee = String(params.emp || params.employee || '').trim()
-  const date = String(params.date || '').trim()
+  const date = normalizeWriteoffDateYmd_(String(params.date || '').trim())
   const reason = String(params.reason || '').trim()
   if (!item || !qty || !employee || !date) return jsonResponse({ error: 'нужны item, qty, emp, date' })
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)

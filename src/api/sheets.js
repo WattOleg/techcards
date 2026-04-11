@@ -425,16 +425,35 @@ export async function mutateWriteoffs(payload, pin) {
 
   if (op === 'append' && payload.entry) {
     const e = payload.entry
-    const url = buildUrl('appendSimpleWriteoff', {
-      item: e.item || '',
-      qty: String(e.qty || ''),
-      unit: e.unit || '',
+    const dateStr = String(e.date || '').slice(0, 10)
+    const postPayload = {
+      action: 'appendSimpleWriteoffPost',
+      pin: pinStr,
+      item: String(e.item || '').trim(),
+      qty: String(e.qty || '').trim(),
+      unit: String(e.unit || '').trim() || 'гр',
       typ: e.type === 'move' ? 'move' : 'writeoff',
-      emp: e.employee || '',
-      date: e.date || '',
-      reason: String(e.reason || '').slice(0, 500),
-    })
-    return await requestJson(url)
+      emp: String(e.employee || '').trim(),
+      date: dateStr,
+      reason: String(e.reason || '').trim().slice(0, 4000),
+    }
+    try {
+      return await requestJson(baseUrl, {
+        method: 'POST',
+        body: JSON.stringify(postPayload),
+      })
+    } catch {
+      const url = buildUrl('appendSimpleWriteoff', {
+        item: postPayload.item,
+        qty: postPayload.qty,
+        unit: postPayload.unit,
+        typ: postPayload.typ,
+        emp: postPayload.emp,
+        date: postPayload.date,
+        reason: postPayload.reason.slice(0, 500),
+      })
+      return await requestJson(url)
+    }
   }
 
   if (op === 'delete' && payload.id != null && payload.id !== '') {

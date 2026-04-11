@@ -1,3 +1,5 @@
+import { formatWriteoffDateRuFromEntry } from './writeoffDateRu'
+
 const toText = (value) => String(value || '').trim()
 
 let pdfMakePromise = null
@@ -239,23 +241,13 @@ function scheduleToPdfContent(payload) {
 }
 
 function writeoffsToPdfContent(payload) {
-  const formatWriteoffDateRu = (raw) => {
-    const s = String(raw || '').trim()
-    const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
-    const ymd = m ? m[1] : s.slice(0, 10)
-    if (!ymd || ymd.length < 10) return toText(s.replace(/T.*/, ''))
-    const parts = ymd.split('-').map(Number)
-    const dt = new Date(parts[0], parts[1] - 1, parts[2])
-    if (Number.isNaN(dt.getTime())) return toText(ymd)
-    return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
-  }
   const parseQty = (value) => {
     const raw = String(value || '').replace(',', '.').replace(/[^0-9.\-]/g, '')
     const n = Number(raw)
     return Number.isFinite(n) ? n : 0
   }
   const rows = (payload.entries || []).map((e) => [
-    { text: formatWriteoffDateRu(e.date || e.createdAt), margin: [2, 3, 2, 3] },
+    { text: toText(formatWriteoffDateRuFromEntry(e)), margin: [2, 3, 2, 3] },
     { text: toText(e.employee), margin: [2, 3, 2, 3] },
     { text: toText(e.type === 'move' ? 'Перемещение' : 'Списание'), margin: [2, 3, 2, 3] },
     { text: toText(e.item), margin: [2, 3, 2, 3] },

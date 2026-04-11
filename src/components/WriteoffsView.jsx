@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { exportWriteoffsToPdf } from '../utils/pdfExport'
+import { formatWriteoffDateRuFromEntry, ymdFromEntry } from '../utils/writeoffDateRu'
 
 function uid(prefix) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -8,27 +9,6 @@ function uid(prefix) {
 
 function todayYmd() {
   return new Date().toISOString().slice(0, 10)
-}
-
-/** Для сортировки и фильтров: только календарная дата YYYY-MM-DD. */
-function ymdFromEntry(e) {
-  const raw = String(e?.date || e?.createdAt || '').trim()
-  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/)
-  return m ? m[1] : raw.slice(0, 10)
-}
-
-/** Дата в ленте: по-русски, без времени и часового пояса. */
-function formatWriteoffDateRu(e) {
-  const ymd = ymdFromEntry(e)
-  if (!ymd || ymd.length < 10) {
-    const s = String(e?.date || '').trim()
-    return s ? s.replace(/T.*/, '').replace(/GMT.*/i, '').trim() || '—' : '—'
-  }
-  const [y, mo, d] = ymd.split('-').map(Number)
-  if (!y || !mo || !d) return ymd
-  const dt = new Date(y, mo - 1, d)
-  if (Number.isNaN(dt.getTime())) return ymd
-  return dt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
 function ToolbarIcon({ type }) {
@@ -85,8 +65,11 @@ export default function WriteoffsView({
   const sortedEntries = useMemo(
     () =>
       [...entries].sort((a, b) => {
-        const db = ymdFromEntry(b)
         const da = ymdFromEntry(a)
+        const db = ymdFromEntry(b)
+        if (!da && !db) return 0
+        if (!da) return 1
+        if (!db) return -1
         const c = db.localeCompare(da)
         if (c !== 0) return c
         return String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))
@@ -348,7 +331,7 @@ export default function WriteoffsView({
                 <strong>{e.item}</strong> - {e.qty} {e.unit}
               </div>
               <div className="muted small">
-                {formatWriteoffDateRu(e)} — {e.employee} — {e.type === 'move' ? 'Перемещение' : 'Списание'}
+                {formatWriteoffDateRuFromEntry(e)} — {e.employee} — {e.type === 'move' ? 'Перемещение' : 'Списание'}
                 {e.reason ? ` — ${e.reason}` : ''}
               </div>
               <button type="button" className="ghost-btn writeoff-row-action" onClick={() => removeEntry(e.id)} disabled={busy}>
