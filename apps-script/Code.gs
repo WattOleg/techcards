@@ -227,7 +227,7 @@ function appendSimpleWriteoff_(params) {
     const sheet = getWriteLogSheet_(ss)
     const nextRow = getNextEmptyRowInColumnA_(sheet)
     const id = Utilities.getUuid()
-    sheet.getRange(nextRow, 1, nextRow, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
+    sheet.getRange(nextRow, 1, 1, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
     const entry = {
       id: id,
       item: item,
@@ -282,7 +282,7 @@ function updateSimpleWriteoff_(params) {
   const sheet = getWriteLogSheet_(ss)
   const row = findLogRowByEntryId_(sheet, id)
   if (row < 0) return jsonResponse({ error: 'запись не найдена' })
-  sheet.getRange(row, 1, row, 8).setValues([[item, qty, unit, typ, employee, dateNorm, reason, id]])
+  sheet.getRange(row, 1, 1, 8).setValues([[item, qty, unit, typ, employee, dateNorm, reason, id]])
   return jsonResponse({
     success: true,
     entry: {
@@ -314,7 +314,7 @@ function updateWriteoffTemplates_(body) {
   for (var i = 0; i < templates.length; i++) {
     const t = templates[i]
     const tid = String(t.id || '').trim() || Utilities.getUuid()
-    sh.getRange(i + 1, 1, i + 1, 7).setValues([[t.title, t.item, t.qty, t.unit || 'гр', t.type, t.reason, tid]])
+    sh.getRange(i + 1, 1, 1, 7).setValues([[t.title, t.item, t.qty, t.unit || 'гр', t.type, t.reason, tid]])
   }
   return jsonResponse({ success: true })
 }
