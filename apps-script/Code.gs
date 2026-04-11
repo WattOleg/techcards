@@ -7,11 +7,10 @@ const SCHEDULE_SHEET_NAME = '_SCHEDULE'
 /** Месячные листы: _SCHEDULE_2026-03 (JSON смен + недостача за месяц) */
 const SCHEDULE_MONTH_PREFIX = '_SCHEDULE_'
 const STATS_SHEET_NAME = '_APP_STATS'
-/** Лист списаний: A наименование, B кол-во, C ед.изм., D действие, E сотрудник, F дата, G причина, H id (UUID). Строка 1 = первая запись. */
-const WRITEOFFS_LOG_SHEET = '_WRITE_LOG'
-/** Шаблоны: A название, B продукт, C кол-во, D ед., E тип, F причина */
-const WRITEOFFS_TPL_SHEET = '_WRITE_TPL'
-const WRITEOFFS_LEGACY_SHEET = '_WRITEOFFS'
+/** Только этот лист: без чтения старого _WRITEOFFS / JSON. A–H: позиция, кол-во, ед., тип, сотрудник, дата, причина, UUID. */
+const WRITEOFFS_LOG_SHEET = '_WRITE_LOG_'
+/** Шаблоны отдельно. A–G: название, продукт, кол-во, ед., тип, причина, id */
+const WRITEOFFS_TPL_SHEET = '_WRITE_TPL_'
 
 function doGet(e) {
   const action = e.parameter.action
@@ -77,7 +76,6 @@ function getWriteLogSheet_(ss) {
   if (!sh) {
     sh = ss.insertSheet(WRITEOFFS_LOG_SHEET)
     sh.hideSheet()
-    maybeMigrateLegacyWriteoffsToLog_(ss, sh)
   }
   return sh
 }
@@ -87,72 +85,8 @@ function getWriteTplSheet_(ss) {
   if (!sh) {
     sh = ss.insertSheet(WRITEOFFS_TPL_SHEET)
     sh.hideSheet()
-    maybeMigrateTemplatesFromLegacy_(ss, sh)
   }
   return sh
-}
-
-function maybeMigrateLegacyWriteoffsToLog_(ss, logSh) {
-  const key = 'migrated_write_log_v3'
-  const props = PropertiesService.getScriptProperties()
-  if (props.getProperty(key)) return
-  const legacy = ss.getSheetByName(WRITEOFFS_LEGACY_SHEET)
-  if (!legacy || logSh.getLastRow() > 0) {
-    props.setProperty(key, '1')
-    return
-  }
-  try {
-    const lr = legacy.getLastRow()
-    if (lr >= 3) {
-      const data = legacy.getRange(3, 1, lr, 9).getValues()
-      for (var i = 0; i < data.length; i++) {
-        const row = data[i]
-        const item = String(row[3] || '').trim()
-        if (!item) continue
-        const id = String(row[0] || '').trim() || Utilities.getUuid()
-        const typ = String(row[6] || '').trim() === 'move' ? 'move' : 'writeoff'
-        logSh.appendRow([
-          item,
-          String(row[4] || '').trim(),
-          String(row[5] || '').trim() || 'гр',
-          typ,
-          String(row[2] || '').trim(),
-          String(row[1] || '').trim(),
-          String(row[7] || '').trim(),
-          id,
-        ])
-      }
-    }
-  } catch (e) {}
-  props.setProperty(key, '1')
-}
-
-function maybeMigrateTemplatesFromLegacy_(ss, tplSh) {
-  const key = 'migrated_write_tpl_v1'
-  const props = PropertiesService.getScriptProperties()
-  if (props.getProperty(key)) return
-  const legacy = ss.getSheetByName(WRITEOFFS_LEGACY_SHEET)
-  if (!legacy) {
-    props.setProperty(key, '1')
-    return
-  }
-  try {
-    const raw = legacy.getRange(1, 1).getValue()
-    if (!raw || String(raw).trim().charAt(0) !== '{') {
-      props.setProperty(key, '1')
-      return
-    }
-    const parsed = JSON.parse(String(raw))
-    const arr = Array.isArray(parsed.templates) ? parsed.templates : []
-    for (var j = 0; j < arr.length; j++) {
-      const t = normalizeWriteoffTemplate_(arr[j])
-      if (t.title && t.item && t.qty) {
-        const tid = String(t.id || '').trim() || Utilities.getUuid()
-        tplSh.appendRow([t.title, t.item, t.qty, t.unit || 'гр', t.type, t.reason, tid])
-      }
-    }
-  } catch (e) {}
-  props.setProperty(key, '1')
 }
 
 function readWriteLogEntries_(sheet) {
@@ -222,139 +156,9 @@ function normalizeWriteoffDateYmd_(s) {
   return t.slice(0, 10)
 }
 
-/** Окно импорта: последние 62 дня по сегодня (≈2 мес.) — захватывает «прошлый месяц» и недавние строки вроде 11.04 при текущем апреле. */
-function getLegacyImportWindowBounds_(tz) {
-  const now = new Date()
-  const endD = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const startD = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 62)
-  return {
-    startStr: Utilities.formatDate(startD, tz, 'yyyy-MM-dd'),
-    endStr: Utilities.formatDate(endD, tz, 'yyyy-MM-dd'),
-  }
-}
-
-function stableWriteoffMigId_(dateY, item, qty, employee) {
-  try {
-    const s = String(dateY) + '|' + String(item) + '|' + String(qty) + '|' + String(employee)
-    const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, s, Utilities.Charset.UTF_8)
-    const b64 = Utilities.base64EncodeWebSafe(digest)
-    return 'mig_' + String(b64 || '').replace(/=+$/, '').slice(0, 22)
-  } catch (e) {
-    return 'mig_' + Utilities.getUuid()
-  }
-}
-
-function isYmdInRange_(ymd, startStr, endStr) {
-  if (!ymd || ymd.length < 10) return false
-  const d = ymd.slice(0, 10)
-  return d >= startStr && d <= endStr
-}
-
-function normalizeLegacyJsonEntry_(e) {
-  if (!e || typeof e !== 'object') return null
-  const item = String(e.item || '').trim()
-  const qty = String(e.qty || '').trim()
-  const employee = String(e.employee || '').trim()
-  const dateY = normalizeWriteoffDateYmd_(String(e.date || ''))
-  if (!item || !qty || !employee || !dateY) return null
-  return {
-    id: String(e.id || '').trim() || stableWriteoffMigId_(dateY, item, qty, employee),
-    item: item,
-    qty: qty,
-    unit: String(e.unit || '').trim() || 'гр',
-    type: String(e.type || '').trim() === 'move' ? 'move' : 'writeoff',
-    employee: employee,
-    date: dateY,
-    reason: String(e.reason || '').trim(),
-  }
-}
-
-function getExistingLogEntryIds_(logSh) {
-  const last = logSh.getLastRow()
-  if (last < 1) return {}
-  const ids = logSh.getRange(1, 8, last, 8).getValues()
-  const o = {}
-  for (var i = 0; i < ids.length; i++) {
-    const id = String(ids[i][0] || '').trim()
-    if (id) o[id] = 1
-  }
-  return o
-}
-
-/** Один раз: из _WRITEOFFS (JSON в A1 и/или строки с 3-й) — записи за последние ~62 дня в _WRITE_LOG (без дублей по id). */
-function maybeMigrateLegacyWriteoffsPastMonth_v5_(ss, logSh) {
-  const key = 'migrated_write_log_v6'
-  const props = PropertiesService.getScriptProperties()
-  if (props.getProperty(key)) return
-  let tz = 'Europe/Moscow'
-  try {
-    tz = ss.getSpreadsheetTimeZone() || Session.getScriptTimeZone() || tz
-  } catch (e) {}
-  const bounds = getLegacyImportWindowBounds_(tz)
-  const legacy = ss.getSheetByName(WRITEOFFS_LEGACY_SHEET)
-  if (!legacy) {
-    props.setProperty(key, '1')
-    return
-  }
-  const collected = []
-  const pushUniq = function (map, arr, entry) {
-    if (!entry || !entry.id) return
-    if (map[entry.id]) return
-    map[entry.id] = 1
-    arr.push(entry)
-  }
-  const idSeen = {}
-  try {
-    const raw = String(legacy.getRange(1, 1).getValue() || '').trim()
-    if (raw.charAt(0) === '{') {
-      const parsed = JSON.parse(raw)
-      const ent = Array.isArray(parsed.entries) ? parsed.entries : []
-      for (var j = 0; j < ent.length; j++) {
-        const ne = normalizeLegacyJsonEntry_(ent[j])
-        if (ne) pushUniq(idSeen, collected, ne)
-      }
-    }
-  } catch (e1) {}
-  try {
-    const lr = legacy.getLastRow()
-    if (lr >= 3) {
-      const data = legacy.getRange(3, 1, lr, 9).getValues()
-      for (var r = 0; r < data.length; r++) {
-        const row = data[r]
-        const item = String(row[3] || '').trim()
-        if (!item) continue
-        const dateY = normalizeWriteoffDateYmd_(String(row[1] || ''))
-        const qtyR = String(row[4] || '').trim()
-        const empR = String(row[2] || '').trim()
-        const ne = {
-          id: String(row[0] || '').trim() || stableWriteoffMigId_(dateY, item, qtyR, empR),
-          item: item,
-          qty: qtyR,
-          unit: String(row[5] || '').trim() || 'гр',
-          type: String(row[6] || '').trim() === 'move' ? 'move' : 'writeoff',
-          employee: empR,
-          date: dateY,
-          reason: String(row[7] || '').trim(),
-        }
-        if (ne.qty && ne.employee && ne.date) pushUniq(idSeen, collected, ne)
-      }
-    }
-  } catch (e2) {}
-  const existing = getExistingLogEntryIds_(logSh)
-  for (var k = 0; k < collected.length; k++) {
-    const ex = collected[k]
-    if (!isYmdInRange_(ex.date, bounds.startStr, bounds.endStr)) continue
-    if (existing[ex.id]) continue
-    logSh.appendRow([ex.item, ex.qty, ex.unit, ex.type, ex.employee, ex.date, ex.reason, ex.id])
-    existing[ex.id] = 1
-  }
-  props.setProperty(key, '1')
-}
-
 function getWriteoffs() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
   const logSh = getWriteLogSheet_(ss)
-  maybeMigrateLegacyWriteoffsPastMonth_v5_(ss, logSh)
   const tplSh = getWriteTplSheet_(ss)
   const entries = readWriteLogEntries_(logSh)
   const templates = readWriteTplRows_(tplSh)
@@ -618,7 +422,9 @@ function shouldIncludeSheetInCardList_(sheetName) {
     n === SECTIONS_SHEET_NAME ||
     n === SCHEDULE_SHEET_NAME ||
     n === STATS_SHEET_NAME ||
-    n === WRITEOFFS_LEGACY_SHEET ||
+    n === '_WRITEOFFS' ||
+    n === '_WRITE_LOG' ||
+    n === '_WRITE_TPL' ||
     n === WRITEOFFS_LOG_SHEET ||
     n === WRITEOFFS_TPL_SHEET
   )

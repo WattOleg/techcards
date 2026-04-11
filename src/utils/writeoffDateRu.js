@@ -20,17 +20,24 @@ export function ymdFromEntry(e) {
   return m ? m[1] : raw.slice(0, 10)
 }
 
-/** Дата для ленты / PDF: «11 апреля 2026 г.» */
+function ymdFromDateLocal(d) {
+  const y = d.getFullYear()
+  const mo = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** Дата для ленты / PDF: «11 апреля 2026 г.» (всегда по-русски, даже если в записи англ. строка от Sheets). */
 export function formatWriteoffDateRuFromEntry(e) {
   const ymd = ymdFromEntry(e)
-  if (!ymd || ymd.length < 10) {
-    const s = String(e?.date || '').trim()
-    if (!s) return '—'
-    const iso = s.match(/^(\d{4}-\d{2}-\d{2})/)
-    if (iso) return formatWriteoffDateRuFromYmd(iso[1])
-    return s.replace(/T.*/, '').replace(/GMT.*/i, '').trim() || '—'
-  }
-  return formatWriteoffDateRuFromYmd(ymd)
+  if (ymd && ymd.length >= 10) return formatWriteoffDateRuFromYmd(ymd)
+  const s = String(e?.date || e?.createdAt || '').trim()
+  if (!s) return '—'
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (iso) return formatWriteoffDateRuFromYmd(iso[1])
+  const t = Date.parse(s)
+  if (!Number.isNaN(t)) return formatWriteoffDateRuFromYmd(ymdFromDateLocal(new Date(t)))
+  return '—'
 }
 
 export function formatWriteoffDateRuFromYmd(ymd) {
