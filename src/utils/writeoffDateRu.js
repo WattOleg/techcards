@@ -14,17 +14,23 @@ const RU_MONTHS_GEN = [
   'декабря',
 ]
 
-export function ymdFromEntry(e) {
-  const raw = String(e?.date || e?.createdAt || '').trim()
-  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/)
-  return m ? m[1] : raw.slice(0, 10)
-}
-
 function ymdFromDateLocal(d) {
   const y = d.getFullYear()
   const mo = d.getMonth() + 1
   const day = d.getDate()
   return `${y}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** YYYY-MM-DD для фильтра и сортировки; пустая строка, если дату не распознать. */
+export function ymdFromEntry(e) {
+  const raw = String(e?.date || e?.createdAt || '').trim()
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (m) return m[1]
+  if (!raw) return ''
+  const t = Date.parse(raw)
+  if (!Number.isNaN(t)) return ymdFromDateLocal(new Date(t))
+  const head = raw.slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : ''
 }
 
 /** Дата для ленты / PDF: «11 апреля 2026 г.» (всегда по-русски, даже если в записи англ. строка от Sheets). */
