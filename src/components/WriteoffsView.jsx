@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
 import { exportWriteoffsToPdf } from '../utils/pdfExport'
-import { formatWriteoffDateRuFromEntry, ymdFromEntry } from '../utils/writeoffDateRu'
+import {
+  formatWriteoffDateRuFromEntry,
+  formatWriteoffDateRuFromYmd,
+  ymdFromEntry,
+} from '../utils/writeoffDateRu'
 
 function uid(prefix) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -59,6 +63,7 @@ export default function WriteoffsView({
   const [templateToDelete, setTemplateToDelete] = useState(null)
   const [appendSubmitting, setAppendSubmitting] = useState(false)
   const [reloadSubmitting, setReloadSubmitting] = useState(false)
+  const [templateSubmitting, setTemplateSubmitting] = useState(false)
 
   const entries = Array.isArray(data?.entries) ? data.entries : []
   const templates = Array.isArray(data?.templates) ? data.templates : []
@@ -87,7 +92,9 @@ export default function WriteoffsView({
     [sortedEntries, fromDate, toDate],
   )
 
-  const busy = Boolean(saving || loading || appendSubmitting || reloadSubmitting)
+  const busy = Boolean(
+    saving || loading || appendSubmitting || reloadSubmitting || templateSubmitting,
+  )
 
   const addEntry = async () => {
     const employee = draft.employee.trim()
@@ -168,15 +175,18 @@ export default function WriteoffsView({
       item,
       qty,
       unit: draft.unit.trim() || 'гр',
-      type: draft.type,
+      type: draft.type === 'move' ? 'move' : 'writeoff',
       reason: draft.reason.trim(),
     }
+    setTemplateSubmitting(true)
     try {
       setFormError('')
       await onReplaceTemplates([tpl, ...templates])
       setTemplateTitle('')
     } catch {
-      setFormError('Не удалось сохранить шаблон.')
+      setFormError('Не удалось сохранить шаблон. Проверьте сеть и обновите страницу.')
+    } finally {
+      setTemplateSubmitting(false)
     }
   }
 
@@ -191,11 +201,14 @@ export default function WriteoffsView({
     }))
 
   const removeTemplate = async (id) => {
+    setTemplateSubmitting(true)
     try {
       setFormError('')
       await onReplaceTemplates(templates.filter((t) => t.id !== id))
     } catch {
       setFormError('Не удалось удалить шаблон.')
+    } finally {
+      setTemplateSubmitting(false)
     }
   }
 
@@ -246,8 +259,22 @@ export default function WriteoffsView({
 
       <div className="schedule-employees card-primary">
         <h4>Новая запись</h4>
+        <div className="writeoff-form-date-block">
+          <span className="muted small">Дата записи</span>
+          <span className="writeoff-date-ru-text">
+            {draft.date && String(draft.date).length >= 10
+              ? formatWriteoffDateRuFromYmd(String(draft.date).slice(0, 10))
+              : '—'}
+          </span>
+          <input
+            type="date"
+            className="writeoff-date-native"
+            value={draft.date}
+            onChange={(e) => setDraft((p) => ({ ...p, date: e.target.value }))}
+            lang="ru"
+          />
+        </div>
         <div className="writeoff-form-grid">
-          <input type="date" value={draft.date} onChange={(e) => setDraft((p) => ({ ...p, date: e.target.value }))} />
           <input placeholder="Сотрудник" value={draft.employee} onChange={(e) => setDraft((p) => ({ ...p, employee: e.target.value }))} />
           <select value={draft.type} onChange={(e) => setDraft((p) => ({ ...p, type: e.target.value }))}>
             <option value="writeoff">Списание</option>
@@ -280,8 +307,15 @@ export default function WriteoffsView({
             onChange={(e) => setTemplateTitle(e.target.value)}
             className="writeoff-template-input"
           />
-          <button type="button" className="ghost-btn" onClick={addTemplate} disabled={busy}>
-            Сохранить как шаблон
+          <button type="button" className="ghost-btn writeoff-template-save-btn" onClick={addTemplate} disabled={busy}>
+            {templateSubmitting ? (
+              <span className="writeoff-btn-inner">
+                <span className="schedule-loading-spinner" aria-hidden />
+                <span>Сохранение…</span>
+              </span>
+            ) : (
+              'Сохранить как шаблон'
+            )}
           </button>
         </div>
       </div>
@@ -379,8 +413,22 @@ export default function WriteoffsView({
         <div className="export-modal-backdrop" onClick={() => setEditEntry(null)}>
           <div className="export-modal" onClick={(ev) => ev.stopPropagation()}>
             <h3>Редактировать запись</h3>
+            <div className="writeoff-form-date-block">
+              <span className="muted small">Дата записи</span>
+              <span className="writeoff-date-ru-text">
+                {editEntry.date && String(editEntry.date).length >= 10
+                  ? formatWriteoffDateRuFromYmd(String(editEntry.date).slice(0, 10))
+                  : '—'}
+              </span>
+              <input
+                type="date"
+                className="writeoff-date-native"
+                value={String(editEntry.date || '').slice(0, 10)}
+                onChange={(e) => setEditEntry((p) => ({ ...p, date: e.target.value }))}
+                lang="ru"
+              />
+            </div>
             <div className="writeoff-form-grid">
-              <input type="date" value={editEntry.date || ''} onChange={(e) => setEditEntry((p) => ({ ...p, date: e.target.value }))} />
               <input value={editEntry.employee || ''} onChange={(e) => setEditEntry((p) => ({ ...p, employee: e.target.value }))} />
               <select value={editEntry.type || 'writeoff'} onChange={(e) => setEditEntry((p) => ({ ...p, type: e.target.value }))}>
                 <option value="writeoff">Списание</option>
@@ -400,7 +448,14 @@ export default function WriteoffsView({
                 Отмена
               </button>
               <button type="button" className="btn btn-dark" onClick={saveEditedEntry} disabled={busy}>
-                Сохранить
+                {saving ? (
+                  <span className="writeoff-btn-inner">
+                    <span className="schedule-loading-spinner" aria-hidden />
+                    <span>Сохранение…</span>
+                  </span>
+                ) : (
+                  'Сохранить'
+                )}
               </button>
             </div>
           </div>

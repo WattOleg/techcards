@@ -1912,6 +1912,36 @@ h1 {
   gap: 12px;
 }
 
+.writeoff-form-date-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #faf9f7;
+  border-radius: 10px;
+  border: 1px solid #e8e6e1;
+}
+
+.writeoff-date-ru-text {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.writeoff-date-native {
+  margin-left: auto;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.writeoff-template-save-btn .schedule-loading-spinner {
+  border-color: rgba(0, 0, 0, 0.12);
+  border-top-color: rgba(0, 0, 0, 0.55);
+}
+
 .writeoff-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

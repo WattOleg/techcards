@@ -473,6 +473,21 @@ function App() {
           )
           return
         }
+        if (payload.op === 'templates' && Array.isArray(payload.templates)) {
+          setWriteoffsData((prev) => {
+            const next = {
+              entries: Array.isArray(prev.entries) ? prev.entries : [],
+              templates: payload.templates.map((t) => ({ ...t })),
+            }
+            syncWriteoffsOfflineCache(next)
+            return next
+          })
+          setWriteoffsSaveError(
+            reloadErr.message ||
+              'Шаблоны записаны в таблицу, но список не удалось обновить. Нажмите «Обновить из таблицы».',
+          )
+          return
+        }
         throw reloadErr
       }
     } catch (err) {

@@ -37,7 +37,10 @@ async function requestJson(url, options) {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     let res
     try {
-      res = await fetch(url, options)
+      res = await fetch(url, {
+        ...options,
+        cache: 'no-store',
+      })
     } catch (err) {
       lastError = err
       if (attempt < retries) {

@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'tk-static-v2'
-const RUNTIME_CACHE = 'tk-runtime-v2'
+const STATIC_CACHE = 'tk-static-v3'
+const RUNTIME_CACHE = 'tk-runtime-v3'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/e-Bar.png']
 
 self.addEventListener('install', (event) => {
@@ -21,9 +21,18 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event
+  let url
+  try {
+    url = new URL(request.url)
+  } catch {
+    return
+  }
+  // Apps Script нельзя гонять через SW: иначе на iOS «Failed to fetch» / пустой ответ из-за
+  // Promise, резолвящегося в null, и кэша чужого origin.
+  if (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com') {
+    return
+  }
   if (request.method !== 'GET') return
-
-  const url = new URL(request.url)
   const isImageRequest = request.destination === 'image'
 
   // Avoid stale/broken cached remote images (especially Drive links).
@@ -75,15 +84,16 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then(async (cached) => {
       const networkPromise = fetch(request)
         .then((res) => {
-          if (res && (res.status === 200 || res.type === 'opaque')) {
+          if (res && res.ok && res.status === 200) {
             const copy = res.clone()
-            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy))
+            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy).catch(() => {}))
           }
           return res
         })
-        .catch(() => null)
+        .catch(() => Response.error())
 
-      return cached || networkPromise || Response.error()
+      if (cached) return cached
+      return networkPromise
     }),
   )
 })

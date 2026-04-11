@@ -18,7 +18,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   try {
     const url = import.meta.env.VITE_APPS_SCRIPT_URL
     if (url) {
-      const res = await fetch(`${url}?action=logVisit`)
+      const res = await fetch(`${url}?action=logVisit`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (typeof data.visitCount === 'number' && !Number.isNaN(data.visitCount)) {
         window.dispatchEvent(new CustomEvent(VISIT_EVENT, { detail: data.visitCount }))
