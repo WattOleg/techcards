@@ -68,6 +68,65 @@ async function requestJson(url, options) {
   throw lastError || new Error('Ошибка сети')
 }
 
+/**
+ * Запасной канал для списаний: <script src="...&callback=fn"> обходит часть ограничений fetch/CORS.
+ * Сервер возвращает JavaScript: fn({...json...});
+ */
+function writeoffsMutateJsonp(baseUrl, inner, pin) {
+  if (typeof document === 'undefined') {
+    return Promise.reject(new Error('JSONP недоступен'))
+  }
+  return new Promise((resolve, reject) => {
+    const cbName = `tkW_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+    let u
+    try {
+      u = new URL(String(baseUrl).trim())
+      u.searchParams.set('action', 'writeoffsMutate')
+      u.searchParams.set('pin', String(pin || ''))
+      u.searchParams.set('payload', JSON.stringify(inner))
+      u.searchParams.set('_cb', String(Date.now()))
+      u.searchParams.set('callback', cbName)
+    } catch {
+      reject(new Error('Некорректный URL'))
+      return
+    }
+    const url = u.toString()
+    if (url.length > 7500) {
+      reject(new Error('Слишком длинный запрос для JSONP'))
+      return
+    }
+
+    const script = document.createElement('script')
+    const timer = window.setTimeout(() => {
+      cleanup()
+      reject(new Error('Таймаут JSONP'))
+    }, 45000)
+
+    function cleanup() {
+      window.clearTimeout(timer)
+      try {
+        delete window[cbName]
+      } catch {
+        window[cbName] = undefined
+      }
+      if (script.parentNode) script.parentNode.removeChild(script)
+    }
+
+    window[cbName] = (data) => {
+      cleanup()
+      if (data && data.error) reject(new Error(data.error))
+      else resolve(data)
+    }
+
+    script.onerror = () => {
+      cleanup()
+      reject(new Error('JSONP: скрипт не загрузился'))
+    }
+    script.src = url
+    document.head.appendChild(script)
+  })
+}
+
 const mockCards = [
   {
     sheetName: 'Aphrodite',
@@ -404,22 +463,49 @@ export async function mutateWriteoffs(payload, pin) {
   if (payload.id != null && payload.id !== '') inner.id = payload.id
   if (payload.templates) inner.templates = payload.templates
 
+  const baseUrl = String(BASE_URL).trim()
+  let getUrl = null
   try {
-    const u = new URL(BASE_URL)
+    const u = new URL(baseUrl)
     u.searchParams.set('action', 'writeoffsMutate')
     u.searchParams.set('pin', String(pin || ''))
     u.searchParams.set('payload', JSON.stringify(inner))
     u.searchParams.set('_cb', String(Date.now()))
-    const getUrl = u.toString()
-    if (getUrl.length <= 7500) {
-      return await requestJson(getUrl)
-    }
+    const built = u.toString()
+    if (built.length <= 7500) getUrl = built
   } catch {
-    // BASE_URL не парсится как URL — только POST
+    getUrl = null
   }
 
-  return await requestJson(BASE_URL, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
+  const postOnce = () =>
+    requestJson(baseUrl, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+
+  const errs = []
+  if (getUrl) {
+    try {
+      return await requestJson(getUrl)
+    } catch (e1) {
+      errs.push(String(e1?.message || e1))
+      try {
+        return await writeoffsMutateJsonp(baseUrl, inner, pin)
+      } catch (e2) {
+        errs.push(String(e2?.message || e2))
+      }
+    }
+  }
+
+  try {
+    return await postOnce()
+  } catch (e3) {
+    errs.push(String(e3?.message || e3))
+    throw new Error(
+      'Нет связи с Google Apps Script после GET, JSONP и POST. ' +
+        'Загрузка списаний могла показаться из кэша телефона — запись всегда требует сеть до script.google.com. ' +
+        'Проверьте: URL деплоя (/exec), «Anyone», новая версия скрипта, блокировки/VPN. ' +
+        errs.filter(Boolean).join(' | '),
+    )
+  }
 }

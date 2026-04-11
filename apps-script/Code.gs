@@ -37,13 +37,19 @@ function writeoffsMutateFromGet_(params) {
   }
   if (!inner || typeof inner !== 'object') return jsonResponse({ error: 'invalid payload' })
   const pin = params.pin != null ? String(params.pin) : ''
-  return updateWriteoffs({
+  const out = updateWriteoffs({
     pin: pin,
     op: inner.op,
     entry: inner.entry,
     id: inner.id,
     templates: inner.templates,
   })
+  const cb = params.callback != null ? String(params.callback).replace(/[^a-zA-Z0-9_$]/g, '') : ''
+  if (cb.length >= 8 && cb.length <= 64 && /^[a-zA-Z_$]/.test(cb)) {
+    const jsonBody = out.getContent()
+    return ContentService.createTextOutput(cb + '(' + jsonBody + ');').setMimeType(ContentService.MimeType.JAVASCRIPT)
+  }
+  return out
 }
 
 function doPost(e) {
