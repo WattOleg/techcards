@@ -214,31 +214,36 @@ function simpleWriteoffPinOk_(params) {
 
 function appendSimpleWriteoff_(params) {
   if (!simpleWriteoffPinOk_(params)) return jsonResponse({ error: 'invalid pin' })
-  const item = String(params.item || '').trim()
-  const qty = String(params.qty || '').trim()
-  const unit = String(params.unit || '').trim() || 'гр'
-  const typ = String(params.typ || params.type || '').trim() === 'move' ? 'move' : 'writeoff'
-  const employee = String(params.emp || params.employee || '').trim()
-  const date = normalizeWriteoffDateYmd_(params.date)
-  const reason = String(params.reason || '').trim()
-  if (!item || !qty || !employee || !date) return jsonResponse({ error: 'нужны item, qty, emp, date' })
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
-  const sheet = getWriteLogSheet_(ss)
-  const nextRow = getNextEmptyRowInColumnA_(sheet)
-  const id = Utilities.getUuid()
-  sheet.getRange(nextRow, 1, nextRow, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
-  const entry = {
-    id: id,
-    item: item,
-    qty: qty,
-    unit: unit,
-    type: typ,
-    employee: employee,
-    date: date,
-    reason: reason,
-    createdAt: date,
+  try {
+    const item = String(params.item || '').trim()
+    const qty = String(params.qty || '').trim()
+    const unit = String(params.unit || '').trim() || 'гр'
+    const typ = String(params.typ || params.type || '').trim() === 'move' ? 'move' : 'writeoff'
+    const employee = String(params.emp || params.employee || '').trim()
+    const date = normalizeWriteoffDateYmd_(params.date)
+    const reason = String(params.reason || '').trim()
+    if (!item || !qty || !employee || !date) return jsonResponse({ error: 'нужны item, qty, emp, date' })
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID)
+    const sheet = getWriteLogSheet_(ss)
+    const nextRow = getNextEmptyRowInColumnA_(sheet)
+    const id = Utilities.getUuid()
+    sheet.getRange(nextRow, 1, nextRow, 8).setValues([[item, qty, unit, typ, employee, date, reason, id]])
+    const entry = {
+      id: id,
+      item: item,
+      qty: qty,
+      unit: unit,
+      type: typ,
+      employee: employee,
+      date: date,
+      reason: reason,
+      createdAt: date,
+    }
+    return jsonResponse({ success: true, entry: entry })
+  } catch (err) {
+    const msg = err && err.message ? String(err.message) : String(err)
+    return jsonResponse({ error: 'таблица: ' + msg })
   }
-  return jsonResponse({ success: true, entry: entry })
 }
 
 function getNextEmptyRowInColumnA_(sheet) {

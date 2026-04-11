@@ -97,7 +97,8 @@ export default function WriteoffsView({
     saving || loading || appendSubmitting || reloadSubmitting || templateSubmitting,
   )
 
-  const bannerError = formError || saveError || ''
+  /** saveError с сервера важнее: раньше formError затирал реальную причину (PIN, ответ GAS). */
+  const bannerError = saveError || formError || ''
 
   const addEntry = async () => {
     const employee = draft.employee.trim()
@@ -123,8 +124,11 @@ export default function WriteoffsView({
       setFormError('')
       await onAppendEntry(entry)
       setDraft((prev) => ({ ...prev, item: '', qty: '', reason: '' }))
-    } catch {
-      setFormError('Не удалось записать строку в таблицу. Проверьте сеть, PIN и деплой Apps Script.')
+    } catch (err) {
+      setFormError(
+        err?.message ||
+          'Не удалось записать строку в таблицу. Проверьте сеть, PIN и деплой Apps Script.',
+      )
     } finally {
       setAppendSubmitting(false)
     }
@@ -134,8 +138,8 @@ export default function WriteoffsView({
     try {
       setFormError('')
       await onDeleteEntry(id)
-    } catch {
-      setFormError('Не удалось удалить запись.')
+    } catch (err) {
+      setFormError(err?.message || 'Не удалось удалить запись.')
     }
   }
 
@@ -159,8 +163,8 @@ export default function WriteoffsView({
       setFormError('')
       await onUpdateEntry(clean)
       setEditEntry(null)
-    } catch {
-      setFormError('Не удалось сохранить изменения.')
+    } catch (err) {
+      setFormError(err?.message || 'Не удалось сохранить изменения.')
     }
   }
 
@@ -186,8 +190,8 @@ export default function WriteoffsView({
       setFormError('')
       await onReplaceTemplates([tpl, ...templates])
       setTemplateTitle('')
-    } catch {
-      setFormError('Не удалось сохранить шаблон. Проверьте сеть и обновите страницу.')
+    } catch (err) {
+      setFormError(err?.message || 'Не удалось сохранить шаблон. Проверьте сеть и обновите страницу.')
     } finally {
       setTemplateSubmitting(false)
     }
@@ -208,8 +212,8 @@ export default function WriteoffsView({
     try {
       setFormError('')
       await onReplaceTemplates(templates.filter((t) => t.id !== id))
-    } catch {
-      setFormError('Не удалось удалить шаблон.')
+    } catch (err) {
+      setFormError(err?.message || 'Не удалось удалить шаблон.')
     } finally {
       setTemplateSubmitting(false)
     }

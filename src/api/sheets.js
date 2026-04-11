@@ -50,6 +50,24 @@ function writeOffline(key, value) {
   }
 }
 
+/** Понятные сообщения для типичных ответов Apps Script (списания и др.). */
+function translateGasError(raw) {
+  const s = String(raw || '').trim()
+  if (s === 'invalid pin') {
+    return 'Неверный PIN: в Vercel задайте VITE_PIN_CODE так же, как константа PIN в Code.gs (по умолчанию в репозитории 1234).'
+  }
+  if (s === 'нужны item, qty, emp, date') {
+    return 'Не хватает данных: продукт, количество, сотрудник или дата.'
+  }
+  if (s === 'нужны id, item, qty, emp, date') {
+    return 'Не хватает данных при сохранении: id, продукт, количество, сотрудник или дата.'
+  }
+  if (s === 'unknown action') {
+    return 'Сервер не распознал действие (проверьте деплой Apps Script и совпадение URL).'
+  }
+  return s
+}
+
 async function requestJson(url, options) {
   const retries = 2
   let lastError = null
@@ -93,10 +111,10 @@ async function requestJson(url, options) {
       if (!data.error && res.status === 403) {
         throw new Error('Доступ запрещён (403). В деплое Apps Script включите «Anyone».')
       }
-      throw new Error(data.error || `Ошибка ответа сервера (${res.status})`)
+      throw new Error(translateGasError(data.error) || `Ошибка ответа сервера (${res.status})`)
     }
     if (data && data.error) {
-      throw new Error(data.error)
+      throw new Error(translateGasError(data.error))
     }
     return data
   }

@@ -62,12 +62,10 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const rawBody =
-        typeof req.body === 'string'
-          ? req.body
-          : req.body && typeof req.body === 'object'
-            ? JSON.stringify(req.body)
-            : '{}'
+      let rawBody = '{}'
+      if (typeof req.body === 'string') rawBody = req.body
+      else if (Buffer.isBuffer(req.body)) rawBody = req.body.toString('utf8')
+      else if (req.body && typeof req.body === 'object') rawBody = JSON.stringify(req.body)
       const r = await fetch(target.toString(), {
         method: 'POST',
         redirect: 'follow',
