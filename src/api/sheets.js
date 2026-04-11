@@ -1,4 +1,29 @@
-const BASE_URL = import.meta.env.VITE_APPS_SCRIPT_URL
+import { getGasClientBaseUrl } from '../config/gasBaseUrl.js'
+
+const BASE_URL = getGasClientBaseUrl()
+
+/** Путь вида /api/gas — тот же origin (Vercel + serverless-прокси), без new URL(). */
+function isSameOriginProxyPath(url) {
+  const s = String(url || '').trim()
+  return s.startsWith('/') && !s.startsWith('//')
+}
+
+/** Сборка URL с query для абсолютного Apps Script или относительного прокси. */
+function gasUrlWithQuery(base, params) {
+  const b = String(base || '').trim()
+  const sp = new URLSearchParams()
+  Object.entries(params || {}).forEach(([k, v]) => {
+    if (v == null || v === '') return
+    sp.set(k, String(v))
+  })
+  const q = sp.toString()
+  if (!b) return q ? `?${q}` : ''
+  if (isSameOriginProxyPath(b)) return `${b}${q ? `?${q}` : ''}`
+  const u = new URL(b)
+  sp.forEach((val, key) => u.searchParams.set(key, val))
+  return u.toString()
+}
+
 const OFFLINE_KEYS = {
   cardsList: 'tk_offline_cards_list_v1',
   cardsAll: 'tk_offline_cards_all_v1',
@@ -422,15 +447,12 @@ export async function mutateWriteoffs(payload, pin) {
   }
 
   const buildUrl = (action, extra) => {
-    const u = new URL(baseUrl)
-    u.searchParams.set('action', action)
-    u.searchParams.set('pin', pinStr)
-    u.searchParams.set('_cb', String(Date.now()))
-    Object.keys(extra).forEach((k) => {
+    const merged = { action, pin: pinStr, _cb: String(Date.now()) }
+    Object.keys(extra || {}).forEach((k) => {
       const v = extra[k]
-      if (v != null && v !== '') u.searchParams.set(k, String(v))
+      if (v != null && v !== '') merged[k] = v
     })
-    return u.toString()
+    return gasUrlWithQuery(baseUrl, merged)
   }
 
   if (op === 'append' && payload.entry) {

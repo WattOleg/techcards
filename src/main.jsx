@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { getGasClientBaseUrl } from './config/gasBaseUrl.js'
 
 const VISIT_EVENT = 'app-visit-count'
 const LS_KEY = 'tk_app_visit_count'
@@ -16,9 +17,10 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 
 ;(async () => {
   try {
-    const url = import.meta.env.VITE_APPS_SCRIPT_URL
+    const url = getGasClientBaseUrl()
     if (url) {
-      const res = await fetch(`${url}?action=logVisit`, { cache: 'no-store' })
+      const sep = url.includes('?') ? '&' : '?'
+      const res = await fetch(`${url}${sep}action=logVisit`, { cache: 'no-store' })
       const data = await res.json().catch(() => ({}))
       if (typeof data.visitCount === 'number' && !Number.isNaN(data.visitCount)) {
         window.dispatchEvent(new CustomEvent(VISIT_EVENT, { detail: data.visitCount }))
