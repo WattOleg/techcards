@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getPhotoCandidates } from '../utils/photoUrl'
 
 function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare }) {
-  const touchRef = useRef({ x: 0, y: 0, active: false })
   const photoCandidates = useMemo(() => getPhotoCandidates(card?.photoUrl), [card?.photoUrl])
   const [photoIdx, setPhotoIdx] = useState(0)
 
@@ -21,53 +20,8 @@ function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare
   const hasCandidate = photoIdx < photoCandidates.length
   const photoUrl = hasCandidate ? photoCandidates[photoIdx] : ''
 
-  const startSwipe = (x, y) => {
-    touchRef.current = { x, y, active: true }
-  }
-
-  const finishSwipe = (x, y) => {
-    const state = touchRef.current
-    touchRef.current.active = false
-    if (!state.active) return
-
-    const dx = x - state.x
-    const dy = y - state.y
-    const mostlyHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2
-
-    // Swipe left: close card and return to list.
-    if (mostlyHorizontal && dx < -52) onBack()
-  }
-
-  const onTouchStart = (e) => {
-    const t = e.changedTouches?.[0]
-    if (!t) return
-    startSwipe(t.clientX, t.clientY)
-  }
-
-  const onTouchEnd = (e) => {
-    const t = e.changedTouches?.[0]
-    if (!t) return
-    finishSwipe(t.clientX, t.clientY)
-  }
-
-  const onPointerDown = (e) => {
-    if (e.pointerType !== 'touch') return
-    startSwipe(e.clientX, e.clientY)
-  }
-
-  const onPointerUp = (e) => {
-    if (e.pointerType !== 'touch') return
-    finishSwipe(e.clientX, e.clientY)
-  }
-
   return (
-    <div
-      className="view detail-view"
-      onTouchStart={onTouchStart}
-      onTouchEnd={onTouchEnd}
-      onPointerDown={onPointerDown}
-      onPointerUp={onPointerUp}
-    >
+    <div className="view detail-view">
       <div className="hero">
         {photoUrl ? (
           <img

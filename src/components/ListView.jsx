@@ -164,7 +164,7 @@ function ListView({
     setStopItemName('')
   }
 
-  const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label || 'ТехКарты'
+  const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label || 'Карточки'
   const activeMainSection =
     activeSection === 'techcards' || activeSection === 'schedule' || activeSection === 'writeoffs'
       ? activeSection
@@ -255,7 +255,7 @@ function ListView({
           </div>
           <InfoSectionBody sectionId={activeSection} points={infoBlock.points} />
           <p className="muted">
-            Подсказка: вернитесь в раздел <strong>ТехКарты</strong>, чтобы открыть карточки напитков.
+            Подсказка: вернитесь в раздел <strong>Карточки</strong>, чтобы открыть карточки напитков.
           </p>
         </section>
       ) : activeSection === 'schedule' || activeSection === 'writeoffs' ? null : (
@@ -450,14 +450,14 @@ function ListView({
           className={`bottom-tab ${activeMainSection === 'techcards' ? 'is-active' : ''}`}
           onClick={() => onSectionChange('techcards')}
         >
-          ТехКарты
+          Карточки
         </button>
         <button
           type="button"
           className={`bottom-tab ${activeMainSection === 'schedule' ? 'is-active' : ''}`}
           onClick={() => onSectionChange('schedule')}
         >
-          График
+          Графики
         </button>
         <button
           type="button"

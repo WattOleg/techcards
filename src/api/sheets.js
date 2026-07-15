@@ -90,8 +90,13 @@ async function requestJson(url, options) {
       })
     } catch (err) {
       lastError = err
+      // Abort — не ретраим (таймаут вызывающего кода); иначе быстрее сдаёмся в localStorage.
+      if (err?.name === 'AbortError' || options?.signal?.aborted) {
+        throw err
+      }
       if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
+        // Дольше ждать при первом ретрае: типичный handoff Wi‑Fi → LTE.
+        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)))
         continue
       }
       throw new Error(
@@ -174,6 +179,7 @@ export async function fetchAllCards(options = {}) {
     return mockCards
   }
   const forceNetwork = Boolean(options.forceNetwork)
+  const networkOnly = Boolean(options.networkOnly)
   try {
     const data = await requestJson(
       actionUrl('getAll', forceNetwork ? { _cb: Date.now() } : {}),
@@ -183,7 +189,7 @@ export async function fetchAllCards(options = {}) {
     writeOffline(OFFLINE_KEYS.cardsAll, cards)
     return cards
   } catch (err) {
-    if (forceNetwork) throw err
+    if (forceNetwork || networkOnly) throw err
     const cached = readOffline(OFFLINE_KEYS.cardsAll, [])
     if (cached.length) return cached
     throw err
@@ -195,6 +201,7 @@ export async function fetchCardList(options = {}) {
     return mockCards
   }
   const forceNetwork = Boolean(options.forceNetwork)
+  const networkOnly = Boolean(options.networkOnly)
   try {
     const data = await requestJson(
       actionUrl('getList', forceNetwork ? { _cb: Date.now() } : {}),
@@ -204,7 +211,8 @@ export async function fetchCardList(options = {}) {
     writeOffline(OFFLINE_KEYS.cardsList, cards)
     return cards
   } catch (err) {
-    if (forceNetwork) throw err
+    // networkOnly: не уходить в localStorage сразу (нужно для повторной попытки после handoff).
+    if (forceNetwork || networkOnly) throw err
     const cachedList = readOffline(OFFLINE_KEYS.cardsList, [])
     if (cachedList.length) return cachedList
     throw err

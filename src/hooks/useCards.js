@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchAllCards, fetchCardList } from '../api/sheets'
+import {
+  bindNetworkSettleListeners,
+  getFetchTimeoutMs,
+  isOnline,
+  markNetworkUnsettled,
+  onNetworkSettled,
+  waitForNetworkSettle,
+} from '../utils/network'
 
 function parseCardDate(value) {
   const raw = String(value || '').trim()
@@ -19,6 +27,45 @@ function parseCardDate(value) {
   return 0
 }
 
+async function fetchListWithTimeout(fetchOpts = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), getFetchTimeoutMs())
+  try {
+    return await fetchCardList({ ...fetchOpts, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Загрузка с учётом Wi‑Fi → LTE: ждём стабилизации, при сбое ждём и пробуем ещё раз,
+ * иначе на медленном мобильном молча остаёмся на localStorage.
+ */
+async function fetchListResilient(opts = {}) {
+  const forceNetwork = Boolean(opts.forceNetwork)
+  await waitForNetworkSettle()
+
+  try {
+    return await fetchListWithTimeout({ forceNetwork, networkOnly: true })
+  } catch (firstErr) {
+    if (!isOnline()) {
+      // Оффлайн — отдаём кэш, если есть.
+      return await fetchCardList({ forceNetwork: false })
+    }
+    markNetworkUnsettled(2200)
+    await waitForNetworkSettle()
+    try {
+      return await fetchListWithTimeout({ forceNetwork: true, networkOnly: true })
+    } catch {
+      try {
+        return await fetchCardList({ forceNetwork: false })
+      } catch {
+        throw firstErr
+      }
+    }
+  }
+}
+
 export function useCards() {
   const [cards, setCards] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,42 +73,46 @@ export function useCards() {
 
   const loadCards = useCallback(async (opts = {}) => {
     const forceNetwork = Boolean(opts.forceNetwork)
+    const silent = Boolean(opts.silent)
     try {
-      setLoading(true)
-      setError('')
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 2500)
-
-      let nextCards = []
-      try {
-        nextCards = await fetchCardList({ signal: controller.signal, forceNetwork })
-      } finally {
-        clearTimeout(timer)
+      if (!silent) {
+        setLoading(true)
+        setError('')
       }
 
+      const nextCards = await fetchListResilient({ forceNetwork })
       setCards(nextCards)
+      setError('')
 
-      // Background: fetch full techcards so details are ready when user taps.
-      // Does not block rendering the list.
+      // Background: полные техкарты для быстрых деталей.
       void (async () => {
         try {
-          const full = await fetchAllCards({ forceNetwork })
+          await waitForNetworkSettle()
+          const full = await fetchAllCards({ forceNetwork, networkOnly: true })
           if (!Array.isArray(full) || full.length === 0) return
           const byId = new Map(full.map((c) => [c.sheetName, c]))
           setCards((prev) => prev.map((c) => byId.get(c.sheetName) || c))
         } catch {
-          // ignore: list is already rendered (and cache may still exist)
+          // список уже на экране; полные данные подтянутся при следующем settle
         }
       })()
     } catch (err) {
-      setError(err.message || 'Не удалось загрузить позиции')
+      if (!silent) setError(err.message || 'Не удалось загрузить позиции')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
+    bindNetworkSettleListeners()
     loadCards()
+  }, [loadCards])
+
+  // После появления сети / смены Wi‑Fi↔LTE мягко подтянуть свежие данные.
+  useEffect(() => {
+    return onNetworkSettled(() => {
+      void loadCards({ forceNetwork: true, silent: true })
+    })
   }, [loadCards])
 
   const updateLocalCard = useCallback((updatedCard) => {

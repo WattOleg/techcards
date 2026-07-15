@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ListView from './components/ListView'
 import DetailView from './components/DetailView'
 import EditOverlay from './components/EditOverlay'
@@ -21,6 +21,7 @@ import {
 } from './api/sheets'
 import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
+import { bindNetworkSettleListeners, onNetworkSettled } from './utils/network'
 
 function makeEmptyCard() {
   const today = new Date().toISOString().slice(0, 10)
@@ -44,14 +45,18 @@ function makeEmptyCard() {
 
 const CATEGORY_PRIORITY = ['Кофе', 'Матча', 'Чай листовой', 'Чай авторский', 'Лимонад']
 const APP_SECTIONS = [
-  { id: 'techcards', label: 'ТехКарты' },
-  { id: 'schedule', label: 'График смен' },
+  { id: 'techcards', label: 'Карточки' },
+  { id: 'schedule', label: 'Графики' },
   { id: 'writeoffs', label: 'Списания' },
   { id: 'regulations', label: 'Регламенты' },
   { id: 'appearance', label: 'Требования к внешнему виду' },
   { id: 'behavior', label: 'Поведение' },
   { id: 'rights', label: 'Права и ответственность' },
 ]
+
+const DETAIL_HISTORY = { tk: 'detail' }
+const EDGE_SWIPE_ZONE = 36
+const EDGE_SWIPE_COMMIT = 0.28
 
 const DEFAULT_SCHEDULE = {
   defaultStart: '09:00',
@@ -175,6 +180,16 @@ function App() {
   const [stopListLoading, setStopListLoading] = useState(false)
   const [stopListSaving, setStopListSaving] = useState(false)
   const [stopListError, setStopListError] = useState('')
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const [swipeDragging, setSwipeDragging] = useState(false)
+  const closingFromUiRef = useRef(false)
+  const edgeSwipeRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    locked: false,
+    width: 0,
+  })
 
   const selectedCard = useMemo(
     () => cards.find((card) => card.sheetName === selectedId) || null,
@@ -191,6 +206,10 @@ function App() {
     },
     [cards],
   )
+
+  useEffect(() => {
+    bindNetworkSettleListeners()
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -274,6 +293,48 @@ function App() {
     }
   }, [])
 
+  // После Wi‑Fi → LTE / возврата online тихо обновить разделы с сервера, не только кэш.
+  useEffect(() => {
+    return onNetworkSettled(() => {
+      void (async () => {
+        try {
+          const sharedSections = await fetchSectionsContent()
+          setSectionContent({ ...DEFAULT_SECTION_CONTENT, ...sharedSections })
+        } catch {
+          /* keep */
+        }
+        try {
+          const data = await fetchWriteoffs()
+          setWriteoffsData({
+            entries: Array.isArray(data?.entries) ? data.entries : [],
+            templates: Array.isArray(data?.templates) ? data.templates : [],
+          })
+          setWriteoffsSaveError('')
+        } catch {
+          /* keep cache on screen */
+        }
+        try {
+          const s = await fetchSchedule()
+          if (!scheduleDirty) {
+            const normalized = normalizeScheduleServer(s)
+            setScheduleData(normalized)
+            setScheduleBaseline(JSON.stringify(normalized))
+            setScheduleLoadError('')
+          }
+        } catch {
+          /* keep */
+        }
+        try {
+          const data = await fetchStopList()
+          setStopListData(Array.isArray(data) ? data : [])
+          setStopListError('')
+        } catch {
+          /* keep */
+        }
+      })()
+    })
+  }, [scheduleDirty])
+
   useEffect(() => {
     if (activeSection !== 'schedule') setScheduleUnlocked(false)
   }, [activeSection])
@@ -284,6 +345,22 @@ function App() {
     }
     window.addEventListener(VISIT_EVENT, onVisit)
     return () => window.removeEventListener(VISIT_EVENT, onVisit)
+  }, [])
+
+  // Системная «Назад» / жест браузера ↔ закрытие карточки.
+  useEffect(() => {
+    const onPopState = () => {
+      if (closingFromUiRef.current) {
+        closingFromUiRef.current = false
+        return
+      }
+      setView('list')
+      setEditOpen(false)
+      setSwipeOffset(0)
+      setSwipeDragging(false)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
   const ensureFullCard = async (card) => {
@@ -318,6 +395,11 @@ function App() {
   const openDetail = async (cardId) => {
     setSelectedId(cardId)
     setView('detail')
+    setSwipeOffset(0)
+    setSwipeDragging(false)
+    if (typeof window !== 'undefined' && window.history.state?.tk !== 'detail') {
+      window.history.pushState({ ...DETAIL_HISTORY, id: cardId }, '')
+    }
     const base = cards.find((card) => card.sheetName === cardId)
     if (base?.isPartial) {
       setDetailLoading(true)
@@ -330,10 +412,88 @@ function App() {
     }
   }
 
-  const closeDetail = () => {
+  const closeDetail = useCallback(() => {
     setView('list')
     setEditOpen(false)
-  }
+    setSwipeOffset(0)
+    setSwipeDragging(false)
+    if (typeof window !== 'undefined' && window.history.state?.tk === 'detail') {
+      closingFromUiRef.current = true
+      window.history.back()
+    }
+  }, [])
+
+  const detailScreenRef = useRef(null)
+
+  useEffect(() => {
+    const el = detailScreenRef.current
+    if (!el) return undefined
+
+    const onStart = (e) => {
+      if (view !== 'detail' || editOpen || pinModal.open) return
+      const t = e.touches?.[0]
+      if (!t) return
+      if (t.clientX > EDGE_SWIPE_ZONE) return
+      edgeSwipeRef.current = {
+        active: true,
+        startX: t.clientX,
+        startY: t.clientY,
+        locked: false,
+        width: window.innerWidth || 390,
+      }
+    }
+
+    const onMove = (e) => {
+      const state = edgeSwipeRef.current
+      if (!state.active) return
+      const t = e.touches?.[0]
+      if (!t) return
+      const dx = t.clientX - state.startX
+      const dy = t.clientY - state.startY
+      if (!state.locked) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+        if (Math.abs(dy) > Math.abs(dx) * 1.15 || dx < 0) {
+          state.active = false
+          setSwipeDragging(false)
+          setSwipeOffset(0)
+          return
+        }
+        state.locked = true
+        setSwipeDragging(true)
+      }
+      if (e.cancelable) e.preventDefault()
+      const width = state.width || 390
+      setSwipeOffset(Math.max(0, Math.min(dx, width)))
+    }
+
+    const onEnd = (e) => {
+      const state = edgeSwipeRef.current
+      if (!state.active) return
+      const t = e.changedTouches?.[0]
+      const clientX = t ? t.clientX : state.startX
+      const dx = state.locked ? Math.max(0, clientX - state.startX) : 0
+      const width = state.width || 390
+      state.active = false
+      state.locked = false
+      setSwipeDragging(false)
+      if (dx / width >= EDGE_SWIPE_COMMIT) {
+        closeDetail()
+      } else {
+        setSwipeOffset(0)
+      }
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    el.addEventListener('touchcancel', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+      el.removeEventListener('touchcancel', onEnd)
+    }
+  }, [view, editOpen, pinModal.open, closeDetail])
 
   const requestAction = (action) => {
     setPinModal({ open: true, action })
@@ -559,7 +719,17 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className={`screen-stack view-${view}`}>
+      <div
+        className={`screen-stack view-${view}${swipeDragging ? ' is-swiping' : ''}`}
+        style={
+          view === 'detail' && swipeOffset > 0
+            ? {
+                transform: `translateX(calc(-50% + ${swipeOffset}px))`,
+                transition: swipeDragging ? 'none' : undefined,
+              }
+            : undefined
+        }
+      >
         <section className="screen screen-list" aria-hidden={view !== 'list'}>
           <ListView
             cards={cards}
@@ -644,7 +814,11 @@ function App() {
             }
           />
         </section>
-        <section className="screen screen-detail" aria-hidden={view !== 'detail'}>
+        <section
+          ref={detailScreenRef}
+          className="screen screen-detail"
+          aria-hidden={view !== 'detail'}
+        >
           <DetailView
             card={selectedCard}
             loading={detailLoading}
@@ -676,7 +850,7 @@ function App() {
             : pinModal.action === 'create'
               ? 'Создать'
               : pinModal.action === 'scheduleUnlock'
-                ? 'График смен'
+                ? 'Графики'
                 : pinModal.action === 'editSection'
                   ? 'Редактировать раздел'
                   : 'Редактировать'
