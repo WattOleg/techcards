@@ -96,9 +96,10 @@ button,
   width: 200%;
   min-height: 100svh;
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-  will-change: transform;
 }
 
+/* Не вешать will-change/transform на стек в list:
+   иначе position:fixed у .bottom-tabs ломается (containing block = 200% ширина). */
 .screen-stack.is-swiping {
   transition: none;
 }
