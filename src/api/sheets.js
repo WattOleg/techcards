@@ -55,6 +55,40 @@ function writeOffline(key, value) {
   }
 }
 
+/** Мгновенный UI из кэша без сети (полная карта предпочтительнее списка). */
+export function peekCachedCardList() {
+  const all = readOffline(OFFLINE_KEYS.cardsAll, [])
+  if (Array.isArray(all) && all.length) return all
+  const list = readOffline(OFFLINE_KEYS.cardsList, [])
+  return Array.isArray(list) ? list : []
+}
+
+export function peekCachedSections() {
+  const cached = readOffline(OFFLINE_KEYS.sections, null)
+  return cached && typeof cached === 'object' ? cached : null
+}
+
+export function peekCachedSchedule() {
+  const cached = readOffline(OFFLINE_KEYS.schedule, null)
+  return cached && typeof cached === 'object' ? cached : null
+}
+
+export function peekCachedWriteoffs() {
+  const cached = readOffline(OFFLINE_KEYS.writeoffs, null)
+  if (!cached || typeof cached !== 'object') return null
+  return {
+    entries: Array.isArray(cached.entries) ? cached.entries : [],
+    templates: Array.isArray(cached.templates) ? cached.templates : [],
+  }
+}
+
+export function peekCachedStopList() {
+  const cached = readOffline(OFFLINE_KEYS.stopList, null)
+  if (Array.isArray(cached)) return cached
+  if (cached && Array.isArray(cached.stopList)) return cached.stopList
+  return []
+}
+
 /** Понятные сообщения для типичных ответов Apps Script (списания и др.). */
 function translateGasError(raw) {
   const s = String(raw || '').trim()
@@ -95,8 +129,8 @@ async function requestJson(url, options) {
         throw err
       }
       if (attempt < retries) {
-        // Дольше ждать при первом ретрае: типичный handoff Wi‑Fi → LTE.
-        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)))
+        // Короче на старте: длинный backoff замедлял ощущение «сломалось».
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
         continue
       }
       throw new Error(

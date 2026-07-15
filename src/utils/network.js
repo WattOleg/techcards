@@ -1,5 +1,5 @@
-/** Задержка после смены сети (Wi‑Fi ↔ LTE), пока интерфейс «прыгает». */
-export const NETWORK_SETTLE_MS = 2200
+/** Задержка только при реальном handoff Wi‑Fi ↔ LTE (не на каждый старт). */
+export const NETWORK_SETTLE_MS = 1600
 
 function getConnection() {
   if (typeof navigator === 'undefined') return null
@@ -25,15 +25,14 @@ export function isOnline() {
 }
 
 /**
- * Таймаут одного запроса: на мобильной сети / после handoff запросы дольше.
- * Раньше 2.5 с обрывали LTE и приложение тихо брало localStorage.
+ * Таймаут одного запроса. Без искусственной паузы на старте —
+ * длиннее только когда реально cellular.
  */
 export function getFetchTimeoutMs() {
   const type = getConnectionType()
-  if (type === 'cellular') return 12000
-  if (type === 'wifi' || type === 'ethernet') return 6000
-  // Safari / без Network Information API — часто телефон
-  return 10000
+  if (type === 'cellular') return 10000
+  if (type === 'wifi' || type === 'ethernet') return 5000
+  return 7000
 }
 
 let settleUntil = 0
@@ -57,12 +56,10 @@ function scheduleSettle(ms = NETWORK_SETTLE_MS) {
   }, delay)
 }
 
-/** Пометить, что сеть только что сменилась / восстановилась — подождать перед fetch. */
 export function markNetworkUnsettled(ms = NETWORK_SETTLE_MS) {
   scheduleSettle(ms)
 }
 
-/** Дождаться конца «прыжка» сети (или сразу, если уже стабильно). */
 export function waitForNetworkSettle() {
   if (Date.now() >= settleUntil) return Promise.resolve()
   return new Promise((resolve) => {
@@ -75,25 +72,41 @@ export function isNetworkSettling() {
 }
 
 let listenersBound = false
+let lastConnectionType = 'unknown'
 
-/** Один раз на приложение: слушаем online/offline и смену типа соединения. */
+function isHandoff(from, to) {
+  return (
+    (from === 'wifi' && to === 'cellular') ||
+    (from === 'cellular' && to === 'wifi') ||
+    (from === 'wifi' && to === 'none') ||
+    (from === 'cellular' && to === 'none')
+  )
+}
+
+/** Слушаем только online/offline и смену типа (Wi‑Fi ↔ LTE), не каждый signal change. */
 export function bindNetworkSettleListeners() {
   if (listenersBound || typeof window === 'undefined') return
   listenersBound = true
+  lastConnectionType = getConnectionType()
 
-  const onFlap = () => markNetworkUnsettled(NETWORK_SETTLE_MS)
-  window.addEventListener('online', onFlap)
-  window.addEventListener('offline', onFlap)
+  window.addEventListener('online', () => markNetworkUnsettled(NETWORK_SETTLE_MS))
+  window.addEventListener('offline', () => markNetworkUnsettled(NETWORK_SETTLE_MS))
 
   const conn = getConnection()
   if (conn && typeof conn.addEventListener === 'function') {
-    conn.addEventListener('change', onFlap)
+    conn.addEventListener('change', () => {
+      const next = getConnectionType()
+      if (isHandoff(lastConnectionType, next)) {
+        markNetworkUnsettled(NETWORK_SETTLE_MS)
+      }
+      lastConnectionType = next
+    })
   }
 }
 
 /**
- * Подписка на стабилизацию сети после сбоя/смены типа.
- * callback вызывается только когда снова online и settle-таймер истёк.
+ * После восстановления сети (online) — один мягкий refresh.
+ * Не вызывается на обычный старт приложения.
  */
 export function onNetworkSettled(callback) {
   if (typeof window === 'undefined') return () => {}
@@ -101,27 +114,38 @@ export function onNetworkSettled(callback) {
 
   let cancelled = false
   let pending = false
+  let debounceTimer = null
 
-  const runWhenSettled = async () => {
+  const runWhenSettled = () => {
     if (cancelled || pending) return
-    pending = true
-    try {
-      await waitForNetworkSettle()
-      if (cancelled || !isOnline()) return
-      callback()
-    } finally {
-      pending = false
-    }
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(async () => {
+      debounceTimer = null
+      if (cancelled || pending) return
+      pending = true
+      try {
+        await waitForNetworkSettle()
+        if (cancelled || !isOnline()) return
+        callback()
+      } finally {
+        pending = false
+      }
+    }, 400)
   }
 
   const onOnline = () => {
     markNetworkUnsettled(NETWORK_SETTLE_MS)
-    void runWhenSettled()
+    runWhenSettled()
   }
 
   const onChange = () => {
-    markNetworkUnsettled(NETWORK_SETTLE_MS)
-    if (isOnline()) void runWhenSettled()
+    const next = getConnectionType()
+    const handoff = isHandoff(lastConnectionType, next)
+    lastConnectionType = next
+    if (handoff && isOnline()) {
+      markNetworkUnsettled(NETWORK_SETTLE_MS)
+      runWhenSettled()
+    }
   }
 
   window.addEventListener('online', onOnline)
@@ -132,6 +156,7 @@ export function onNetworkSettled(callback) {
 
   return () => {
     cancelled = true
+    if (debounceTimer) clearTimeout(debounceTimer)
     window.removeEventListener('online', onOnline)
     if (conn && typeof conn.removeEventListener === 'function') {
       conn.removeEventListener('change', onChange)

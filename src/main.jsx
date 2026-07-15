@@ -16,6 +16,8 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 }
 
 ;(async () => {
+  // Не конкурировать с getList на первом кадре — счётчик визитов подождёт.
+  await new Promise((r) => setTimeout(r, 1500))
   try {
     const url = getGasClientBaseUrl()
     if (url) {

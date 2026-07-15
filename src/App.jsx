@@ -14,6 +14,10 @@ import {
   fetchStopList,
   mutateWriteoffs,
   mutateStopList,
+  peekCachedSchedule,
+  peekCachedSections,
+  peekCachedStopList,
+  peekCachedWriteoffs,
   syncWriteoffsOfflineCache,
   updateCard,
   updateSchedule,
@@ -21,7 +25,7 @@ import {
 } from './api/sheets'
 import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
-import { bindNetworkSettleListeners, onNetworkSettled } from './utils/network'
+import { bindNetworkSettleListeners } from './utils/network'
 
 function makeEmptyCard() {
   const today = new Date().toISOString().slice(0, 10)
@@ -160,29 +164,43 @@ function App() {
   const [draftCard, setDraftCard] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [activeSection, setActiveSection] = useState('techcards')
-  const [sectionContent, setSectionContent] = useState(DEFAULT_SECTION_CONTENT)
+  const [sectionContent, setSectionContent] = useState(() => ({
+    ...DEFAULT_SECTION_CONTENT,
+    ...(peekCachedSections() || {}),
+  }))
   const [sectionEditor, setSectionEditor] = useState({ open: false, sectionId: null, text: '' })
   const [sectionSaving, setSectionSaving] = useState(false)
   const [sectionSaveError, setSectionSaveError] = useState('')
-  const [scheduleData, setScheduleData] = useState(DEFAULT_SCHEDULE)
+  const cachedSchedule = peekCachedSchedule()
+  const [scheduleData, setScheduleData] = useState(() =>
+    cachedSchedule ? normalizeScheduleServer(cachedSchedule) : DEFAULT_SCHEDULE,
+  )
   const [scheduleUnlocked, setScheduleUnlocked] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaveError, setScheduleSaveError] = useState('')
   const [scheduleLoadError, setScheduleLoadError] = useState('')
   const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [scheduleBaseline, setScheduleBaseline] = useState('')
+  const [scheduleBaseline, setScheduleBaseline] = useState(() =>
+    cachedSchedule ? JSON.stringify(normalizeScheduleServer(cachedSchedule)) : '',
+  )
   const [scheduleSavedAt, setScheduleSavedAt] = useState('')
-  const [writeoffsData, setWriteoffsData] = useState(DEFAULT_WRITEOFFS)
+  const cachedWriteoffs = peekCachedWriteoffs()
+  const [writeoffsData, setWriteoffsData] = useState(() => cachedWriteoffs || DEFAULT_WRITEOFFS)
   const [writeoffsLoading, setWriteoffsLoading] = useState(false)
   const [writeoffsSaving, setWriteoffsSaving] = useState(false)
   const [writeoffsSaveError, setWriteoffsSaveError] = useState('')
-  const [stopListData, setStopListData] = useState(DEFAULT_STOP_LIST)
+  const [stopListData, setStopListData] = useState(() => peekCachedStopList())
   const [stopListLoading, setStopListLoading] = useState(false)
   const [stopListSaving, setStopListSaving] = useState(false)
   const [stopListError, setStopListError] = useState('')
   const [swipeOffset, setSwipeOffset] = useState(0)
   const [swipeDragging, setSwipeDragging] = useState(false)
   const closingFromUiRef = useRef(false)
+  const scheduleFetchedRef = useRef(Boolean(cachedSchedule))
+  const writeoffsFetchedRef = useRef(Boolean(cachedWriteoffs))
+  const stopListFetchedRef = useRef(peekCachedStopList().length > 0)
+  const scheduleSessionLoadedRef = useRef(false)
+  const writeoffsSessionLoadedRef = useRef(false)
   const edgeSwipeRef = useRef({
     active: false,
     startX: 0,
@@ -211,129 +229,92 @@ function App() {
     bindNetworkSettleListeners()
   }, [])
 
+  // Секции — лёгкий запрос после первого кадра, не блокирует список.
   useEffect(() => {
     let active = true
-    ;(async () => {
-      try {
-        const sharedSections = await fetchSectionsContent()
-        if (!active) return
-        setSectionContent({ ...DEFAULT_SECTION_CONTENT, ...sharedSections })
-      } catch {
-        // Keep local defaults when server sections are not available.
-      }
-    })()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    ;(async () => {
-      try {
-        setStopListLoading(true)
-        setStopListError('')
-        const data = await fetchStopList()
-        if (!active) return
-        setStopListData(Array.isArray(data) ? data : [])
-      } catch (err) {
-        if (active) setStopListError(err.message || 'Не удалось загрузить стоп-лист')
-      } finally {
-        if (active) setStopListLoading(false)
-      }
-    })()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    ;(async () => {
-      try {
-        setWriteoffsLoading(true)
-        setWriteoffsSaveError('')
-        const data = await fetchWriteoffs()
-        if (!active) return
-        setWriteoffsData({
-          entries: Array.isArray(data?.entries) ? data.entries : [],
-          templates: Array.isArray(data?.templates) ? data.templates : [],
-        })
-      } catch (err) {
-        if (active) setWriteoffsSaveError(err.message || 'Не удалось загрузить списания')
-      } finally {
-        if (active) setWriteoffsLoading(false)
-      }
-    })()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    ;(async () => {
-      try {
-        setScheduleLoading(true)
-        setScheduleLoadError('')
-        const s = await fetchSchedule()
-        if (!active) return
-        const normalized = normalizeScheduleServer(s)
-        setScheduleData(normalized)
-        setScheduleBaseline(JSON.stringify(normalized))
-        setScheduleSavedAt('')
-      } catch (err) {
-        if (active) setScheduleLoadError(err.message || 'Не удалось загрузить график')
-      } finally {
-        if (active) setScheduleLoading(false)
-      }
-    })()
-    return () => {
-      active = false
-    }
-  }, [])
-
-  // После Wi‑Fi → LTE / возврата online тихо обновить разделы с сервера, не только кэш.
-  useEffect(() => {
-    return onNetworkSettled(() => {
+    const timer = window.setTimeout(() => {
       void (async () => {
         try {
           const sharedSections = await fetchSectionsContent()
+          if (!active) return
           setSectionContent({ ...DEFAULT_SECTION_CONTENT, ...sharedSections })
         } catch {
-          /* keep */
-        }
-        try {
-          const data = await fetchWriteoffs()
-          setWriteoffsData({
-            entries: Array.isArray(data?.entries) ? data.entries : [],
-            templates: Array.isArray(data?.templates) ? data.templates : [],
-          })
-          setWriteoffsSaveError('')
-        } catch {
-          /* keep cache on screen */
-        }
-        try {
-          const s = await fetchSchedule()
-          if (!scheduleDirty) {
-            const normalized = normalizeScheduleServer(s)
-            setScheduleData(normalized)
-            setScheduleBaseline(JSON.stringify(normalized))
-            setScheduleLoadError('')
-          }
-        } catch {
-          /* keep */
-        }
-        try {
-          const data = await fetchStopList()
-          setStopListData(Array.isArray(data) ? data : [])
-          setStopListError('')
-        } catch {
-          /* keep */
+          /* кэш / дефолты уже на экране */
         }
       })()
-    })
-  }, [scheduleDirty])
+    }, 200)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  const loadScheduleFromNetwork = useCallback(async ({ showSpinner = true } = {}) => {
+    try {
+      if (showSpinner) setScheduleLoading(true)
+      setScheduleLoadError('')
+      const s = await fetchSchedule()
+      const normalized = normalizeScheduleServer(s)
+      setScheduleData(normalized)
+      setScheduleBaseline(JSON.stringify(normalized))
+      scheduleFetchedRef.current = true
+    } catch (err) {
+      setScheduleLoadError(err.message || 'Не удалось загрузить график')
+    } finally {
+      setScheduleLoading(false)
+    }
+  }, [])
+
+  const loadWriteoffsFromNetwork = useCallback(async ({ showSpinner = true } = {}) => {
+    try {
+      if (showSpinner) setWriteoffsLoading(true)
+      setWriteoffsSaveError('')
+      const data = await fetchWriteoffs()
+      setWriteoffsData({
+        entries: Array.isArray(data?.entries) ? data.entries : [],
+        templates: Array.isArray(data?.templates) ? data.templates : [],
+      })
+      writeoffsFetchedRef.current = true
+    } catch (err) {
+      setWriteoffsSaveError(err.message || 'Не удалось загрузить списания')
+    } finally {
+      setWriteoffsLoading(false)
+    }
+  }, [])
+
+  const loadStopListFromNetwork = useCallback(async ({ showSpinner = false } = {}) => {
+    try {
+      if (showSpinner) setStopListLoading(true)
+      setStopListError('')
+      const data = await fetchStopList()
+      setStopListData(Array.isArray(data) ? data : [])
+      stopListFetchedRef.current = true
+    } catch (err) {
+      setStopListError(err.message || 'Не удалось загрузить стоп-лист')
+    } finally {
+      setStopListLoading(false)
+    }
+  }, [])
+
+  // Стоп-лист нужен на вкладке карточек — подтянуть тихо после старта, без конкуреции с getList.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadStopListFromNetwork({ showSpinner: false })
+    }, 900)
+    return () => window.clearTimeout(timer)
+  }, [loadStopListFromNetwork])
+
+  // График / списания — при первом заходе на вкладку (кэш уже на экране).
+  useEffect(() => {
+    if (activeSection === 'schedule' && !scheduleSessionLoadedRef.current) {
+      scheduleSessionLoadedRef.current = true
+      void loadScheduleFromNetwork({ showSpinner: !scheduleFetchedRef.current })
+    }
+    if (activeSection === 'writeoffs' && !writeoffsSessionLoadedRef.current) {
+      writeoffsSessionLoadedRef.current = true
+      void loadWriteoffsFromNetwork({ showSpinner: !writeoffsFetchedRef.current })
+    }
+  }, [activeSection, loadScheduleFromNetwork, loadWriteoffsFromNetwork])
 
   useEffect(() => {
     if (activeSection !== 'schedule') setScheduleUnlocked(false)
@@ -751,17 +732,7 @@ function App() {
               loading: stopListLoading,
               saving: stopListSaving,
               error: stopListError,
-              onReload: async () => {
-                try {
-                  setStopListLoading(true)
-                  setStopListError('')
-                  await reloadStopList()
-                } catch (err) {
-                  setStopListError(err.message || 'Не удалось обновить стоп-лист')
-                } finally {
-                  setStopListLoading(false)
-                }
-              },
+              onReload: () => loadStopListFromNetwork({ showSpinner: true }),
               onAdd: (entry) => runStopListMutation({ op: 'append', entry }),
               onDelete: (id) => runStopListMutation({ op: 'delete', id }),
             }}
@@ -779,20 +750,7 @@ function App() {
                     saveError: scheduleSaveError,
                     loadError: scheduleLoadError,
                     saveState: { dirty: scheduleDirty, savedAt: scheduleSavedAt },
-                    onReload: async () => {
-                      try {
-                        setScheduleLoading(true)
-                        setScheduleLoadError('')
-                        const s = await fetchSchedule()
-                        const normalized = normalizeScheduleServer(s)
-                        setScheduleData(normalized)
-                        setScheduleBaseline(JSON.stringify(normalized))
-                      } catch (e) {
-                        setScheduleLoadError(e.message || 'Не удалось обновить график')
-                      } finally {
-                        setScheduleLoading(false)
-                      }
-                    },
+                    onReload: () => loadScheduleFromNetwork({ showSpinner: true }),
                   }
                 : null
             }
