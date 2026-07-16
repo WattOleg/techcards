@@ -730,7 +730,7 @@ function clearListCache() {
 
 function getDefaultScheduleData_() {
   return {
-    defaultStart: '09:00',
+    defaultStart: '08:00',
     defaultEnd: '23:00',
     employees: [],
     employeesByMonth: {},
@@ -845,7 +845,7 @@ function migrateLegacyScheduleIfNeeded_(ss) {
     })
   }
   const nextGlobal = {
-    defaultStart: parsed.defaultStart || '09:00',
+    defaultStart: parsed.defaultStart || '08:00',
     defaultEnd: parsed.defaultEnd || '23:00',
     employees: Array.isArray(parsed.employees) ? parsed.employees : [],
     employeesByMonth: {},
@@ -922,7 +922,7 @@ function scheduleTimeToMinutes_(t) {
 }
 
 function scheduleShiftHours_(shift, defaultStart, defaultEnd) {
-  var s = (shift.start && String(shift.start).trim()) || defaultStart || '09:00'
+  var s = (shift.start && String(shift.start).trim()) || defaultStart || '08:00'
   var e = (shift.end && String(shift.end).trim()) || defaultEnd || '23:00'
   var startM = scheduleTimeToMinutes_(s)
   var endM = scheduleTimeToMinutes_(e)
@@ -1068,7 +1068,7 @@ function verifyPayrollPin(body) {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID)
   migrateLegacyScheduleIfNeeded_(ss)
   var globalSheet = getScheduleSheet_(ss)
-  var defaultStart = '09:00'
+  var defaultStart = '08:00'
   var defaultEnd = '23:00'
   try {
     var globalRaw = globalSheet.getRange(1, 1).getValue()
@@ -1211,7 +1211,7 @@ function updateSchedule(body) {
     }
   }
   const safe = {
-    defaultStart: String(next.defaultStart || '09:00').trim() || '09:00',
+    defaultStart: String(next.defaultStart || '08:00').trim() || '08:00',
     defaultEnd: String(next.defaultEnd || '23:00').trim() || '23:00',
     employees: Array.isArray(next.employees)
       ? next.employees.map(function (e) {

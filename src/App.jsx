@@ -63,7 +63,7 @@ const EDGE_SWIPE_ZONE = 36
 const EDGE_SWIPE_COMMIT = 0.28
 
 const DEFAULT_SCHEDULE = {
-  defaultStart: '09:00',
+  defaultStart: '08:00',
   defaultEnd: '23:00',
   employees: [],
   employeesByMonth: {},

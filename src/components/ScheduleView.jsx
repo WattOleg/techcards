@@ -5,12 +5,16 @@ import { exportScheduleToPdf } from '../utils/pdfExport'
 import {
   addDaysYmd,
   chipTextColors,
+  DAY_CAPACITY_END,
+  DAY_CAPACITY_HOURS,
+  DAY_CAPACITY_START,
   formatRuDate,
   formatShiftRange,
   monthDateStrings,
   normalizeRateHistory,
   parseHexColor,
   rateForDate,
+  shiftFillPercents,
   shiftHours,
   shortageDeductionsEqualCents,
   timeToMinutes,
@@ -19,14 +23,16 @@ import {
 
 const PRESET_COLORS = ['#f0d4cf', '#c8d8b2', '#b8d4e8', '#e8d4f5', '#ffe4b3', '#ffd4dc', '#d4e8d4', '#e0d4c8']
 const SHIFT_TEMPLATES = {
-  morning: { label: 'Утро', start: '09:00', end: '17:00' },
+  morning: { label: 'Утро', start: '08:00', end: '16:00' },
   evening: { label: 'Вечер', start: '15:00', end: '23:00' },
-  full: { label: 'Полная', start: '09:00', end: '23:00' },
+  full: { label: 'Полная', start: '08:00', end: '23:00' },
 }
 
 /** Для старых записей без своих времён в JSON */
-const LEGACY_START = '09:00'
-const LEGACY_END = '23:00'
+const LEGACY_START = DAY_CAPACITY_START
+const LEGACY_END = DAY_CAPACITY_END
+const DEFAULT_SHIFT_START = DAY_CAPACITY_START
+const DEFAULT_SHIFT_END = DAY_CAPACITY_END
 
 function newShiftId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -464,7 +470,7 @@ function ScheduleView({
         date: ymd,
         readOnly: !canEdit,
         rows: canEdit
-          ? [{ id: newShiftId(), employeeId: firstId, start: '09:00', end: '18:00' }]
+          ? [{ id: newShiftId(), employeeId: firstId, start: DEFAULT_SHIFT_START, end: DEFAULT_SHIFT_END }]
           : [],
       })
       return
@@ -535,7 +541,7 @@ function ScheduleView({
         ...prev,
         rows: [
           ...prev.rows,
-          { id: newShiftId(), employeeId: firstId, start: '09:00', end: '18:00' },
+          { id: newShiftId(), employeeId: firstId, start: DEFAULT_SHIFT_START, end: DEFAULT_SHIFT_END },
         ],
       }
     })
@@ -932,7 +938,7 @@ function ScheduleView({
           >
             Шаблоны смен
           </button>
-          <span className="muted small schedule-pattern-hint">утро / вечер / полная и массовое применение</span>
+          <span className="muted small schedule-pattern-hint">утро / вечер / полная (08:00–23:00) и массовое применение</span>
         </div>
       ) : null}
 
@@ -1015,32 +1021,41 @@ function ScheduleView({
                   <span className="schedule-day-num">{formatRuDate(ymd)}</span>
                 </button>
               </div>
-              <div className="schedule-day-chips">
-                {dayShifts.map((s) => {
-                  const emp = (monthEmployees || []).find((x) => x.id === s.employeeId)
-                  const h = shiftHours(s, LEGACY_START, LEGACY_END)
-                  const range = formatShiftRange(s, LEGACY_START, LEGACY_END)
-                  const key = s.id || `${s.date}-${s.employeeId}-${range}`
-                  const bg = emp?.color || '#eee'
-                  const { main, muted } = chipTextColors(bg)
-                  return (
-                    <div key={key} className="schedule-chip-row">
+              <div className="schedule-day-chips" title={`День ${DAY_CAPACITY_HOURS} ч = 100%`}>
+                {dayShifts.length === 0 ? (
+                  <span className="muted schedule-day-empty">—</span>
+                ) : (
+                  shiftFillPercents(dayShifts, LEGACY_START, LEGACY_END).map((pct, idx) => {
+                    const s = dayShifts[idx]
+                    const emp = (monthEmployees || []).find((x) => x.id === s.employeeId)
+                    const h = shiftHours(s, LEGACY_START, LEGACY_END)
+                    const range = formatShiftRange(s, LEGACY_START, LEGACY_END)
+                    const key = s.id || `${s.date}-${s.employeeId}-${range}`
+                    const bg = emp?.color || '#eee'
+                    const { main, muted } = chipTextColors(bg)
+                    return (
                       <div
-                        className="schedule-chip schedule-chip-readonly"
-                        style={{
-                          background: bg,
-                          color: main,
-                          ['--chip-muted']: muted,
-                        }}
+                        key={key}
+                        className="schedule-chip-row"
+                        style={{ flex: `0 0 ${pct}%`, width: `${pct}%`, maxWidth: `${pct}%` }}
                       >
-                        <span className="schedule-chip-name">{emp?.name || '?'}</span>
-                        <span className="schedule-chip-range">{range}</span>
-                        <span className="schedule-chip-h">{h} ч</span>
+                        <div
+                          className="schedule-chip schedule-chip-readonly"
+                          style={{
+                            background: bg,
+                            color: main,
+                            ['--chip-muted']: muted,
+                          }}
+                          title={`${emp?.name || '?'} · ${range} · ${h} ч (${Math.round(pct)}%)`}
+                        >
+                          <span className="schedule-chip-name">{emp?.name || '?'}</span>
+                          <span className="schedule-chip-range">{range}</span>
+                          <span className="schedule-chip-h">{h} ч</span>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-                {dayShifts.length === 0 ? <span className="muted schedule-day-empty">—</span> : null}
+                    )
+                  })
+                )}
               </div>
               {canEdit && dayShifts.length > 0 ? (
                 <>

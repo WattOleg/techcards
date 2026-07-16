@@ -381,7 +381,7 @@ export async function updateSectionContent(sectionId, title, points, pin) {
 }
 
 const mockSchedule = {
-  defaultStart: '09:00',
+  defaultStart: '08:00',
   defaultEnd: '23:00',
   employees: [
     { id: 'e1', name: 'Пример', color: '#f0d4cf', hourlyRate: 300 },

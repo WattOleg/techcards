@@ -1,3 +1,8 @@
+/** Рабочий день по умолчанию: 08:00–23:00 = 15 ч = 100% заливки блока. */
+export const DAY_CAPACITY_START = '08:00'
+export const DAY_CAPACITY_END = '23:00'
+export const DAY_CAPACITY_HOURS = 15
+
 export function timeToMinutes(t) {
   if (!t || typeof t !== 'string') return 0
   const [h, m = '0'] = t.split(':').map((x) => parseInt(x, 10))
@@ -6,12 +11,24 @@ export function timeToMinutes(t) {
 }
 
 export function shiftHours(shift, defaultStart, defaultEnd) {
-  const s = (shift.start || defaultStart || '09:00').trim()
-  const e = (shift.end || defaultEnd || '23:00').trim()
+  const s = (shift.start || defaultStart || DAY_CAPACITY_START).trim()
+  const e = (shift.end || defaultEnd || DAY_CAPACITY_END).trim()
   let startM = timeToMinutes(s)
   let endM = timeToMinutes(e)
   if (endM <= startM) endM += 24 * 60
   return Math.max(0, (endM - startM) / 60)
+}
+
+/**
+ * Доли ширины чипов в блоке дня.
+ * 15 ч = 100%. Если сумма смен > 15 ч — масштабируем, чтобы влезли в блок.
+ */
+export function shiftFillPercents(shifts, defaultStart, defaultEnd, capacityHours = DAY_CAPACITY_HOURS) {
+  const list = Array.isArray(shifts) ? shifts : []
+  const hours = list.map((s) => shiftHours(s, defaultStart, defaultEnd))
+  const total = hours.reduce((a, b) => a + b, 0)
+  const denom = Math.max(capacityHours, total, 0.0001)
+  return hours.map((h) => Math.max(0, (h / denom) * 100))
 }
 
 export function daysInMonth(year, monthIndex) {
@@ -50,8 +67,8 @@ export function formatRuDate(ymd) {
 
 /** Эффективные границы смены для отображения */
 export function effectiveShiftTimes(shift, defaultStart, defaultEnd) {
-  const start = (shift.start && String(shift.start).trim()) || defaultStart || '09:00'
-  const end = (shift.end && String(shift.end).trim()) || defaultEnd || '23:00'
+  const start = (shift.start && String(shift.start).trim()) || defaultStart || DAY_CAPACITY_START
+  const end = (shift.end && String(shift.end).trim()) || defaultEnd || DAY_CAPACITY_END
   return { start, end }
 }
 
