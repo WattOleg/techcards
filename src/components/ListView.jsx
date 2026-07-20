@@ -288,8 +288,22 @@ function ListView({
             >
               <span aria-hidden>📄</span>
             </button>
-            <button type="button" className="refresh-btn stop-list-btn" onClick={() => setStopListOpen(true)}>
+            <button
+              type="button"
+              className="refresh-btn stop-list-btn"
+              onClick={() => setStopListOpen(true)}
+              aria-label={
+                Array.isArray(stopList?.data) && stopList.data.length > 0
+                  ? `Стоп лист, ${stopList.data.length} поз.`
+                  : 'Стоп лист'
+              }
+            >
               Стоп лист
+              {Array.isArray(stopList?.data) && stopList.data.length > 0 ? (
+                <span className="stop-list-badge" aria-hidden>
+                  {stopList.data.length > 99 ? '99+' : stopList.data.length}
+                </span>
+              ) : null}
             </button>
           </div>
 

@@ -526,11 +526,31 @@ h1 {
 }
 
 .stop-list-btn {
+  position: relative;
   min-height: 40px;
   padding: 0 12px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
+}
+
+.stop-list-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e11d2e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+  box-shadow: 0 0 0 2px var(--bg, #f5f4f0);
+  pointer-events: none;
 }
 
 .export-bar {
@@ -1072,6 +1092,8 @@ h1 {
   flex-wrap: wrap;
   padding: 6px 0 2px;
   background: linear-gradient(to bottom, var(--bg) 75%, rgba(245, 244, 240, 0));
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .schedule-status-pill {
@@ -1082,6 +1104,10 @@ h1 {
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .schedule-status-pill.is-online {
@@ -1107,6 +1133,8 @@ h1 {
 .schedule-toolbar {
   display: flex;
   justify-content: flex-end;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .schedule-toolbar-row {
@@ -1114,10 +1142,13 @@ h1 {
   justify-content: flex-start;
   gap: 8px;
   align-items: center;
+  width: 100%;
 }
 
 .schedule-reload {
   min-height: 44px;
+  flex: 0 1 auto;
+  max-width: 100%;
 }
 
 .schedule-export-pdf {
@@ -1127,6 +1158,9 @@ h1 {
 .schedule-unlock {
   padding: 0 14px;
   min-height: 44px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .schedule-toolbar-icon-btn {
@@ -2314,6 +2348,40 @@ h1 {
 
   .schedule-toolbar-row {
     gap: 6px;
+  }
+
+  .schedule-toolbar-row.is-editing .schedule-unlock {
+    flex: 1 1 calc(100% - 150px);
+    min-width: 110px;
+  }
+
+  .schedule-rate-row select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .schedule-rate-row input[type='date'] {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    width: auto;
+  }
+
+  .schedule-rate-row input[type='number'] {
+    flex: 1 1 88px;
+    width: auto;
+    min-width: 72px;
+  }
+
+  .schedule-pattern-hint {
+    flex: 1 1 100%;
+  }
+
+  .schedule-emp-card {
+    flex-wrap: wrap;
+  }
+
+  .schedule-emp-remove {
+    margin-left: auto;
   }
 }
 

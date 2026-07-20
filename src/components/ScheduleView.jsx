@@ -95,6 +95,15 @@ function ToolbarIcon({ type }) {
       </svg>
     )
   }
+  if (type === 'exit') {
+    return (
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
+    )
+  }
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -710,11 +719,11 @@ function ScheduleView({
           {isOnline ? 'Онлайн' : 'Оффлайн'}
         </span>
         <span className={`schedule-status-pill ${saveState?.dirty ? 'is-dirty' : 'is-saved'}`}>
-          {saveState?.dirty ? 'Есть несохраненные изменения' : statusSavedAt ? `Сохранено ${statusSavedAt}` : 'Сохранено'}
+          {saveState?.dirty ? 'Не сохранено' : statusSavedAt ? `Сохранено ${statusSavedAt}` : 'Сохранено'}
         </span>
       </div>
 
-      <div className="schedule-toolbar schedule-toolbar-row">
+      <div className={`schedule-toolbar schedule-toolbar-row${canEdit ? ' is-editing' : ''}`}>
         {!canEdit ? (
           <button
             type="button"
@@ -732,7 +741,7 @@ function ScheduleView({
             onClick={handleSaveSchedule}
             disabled={saving}
           >
-            {saving ? 'Сохранение...' : 'Сохранить в таблицу'}
+            {saving ? '…' : 'Сохранить'}
           </button>
         )}
         {onReload ? (
@@ -760,8 +769,14 @@ function ScheduleView({
           <ToolbarIcon type="download" />
         </button>
         {canEdit ? (
-          <button type="button" className="ghost-btn schedule-reload" onClick={onExitEdit}>
-            Выйти из редактирования
+          <button
+            type="button"
+            className="ghost-btn schedule-toolbar-icon-btn"
+            onClick={onExitEdit}
+            aria-label="Выйти из редактирования"
+            title="Выйти"
+          >
+            <ToolbarIcon type="exit" />
           </button>
         ) : null}
       </div>
