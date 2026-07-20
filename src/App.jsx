@@ -3,7 +3,9 @@ import ListView from './components/ListView'
 import DetailView from './components/DetailView'
 import EditOverlay from './components/EditOverlay'
 import PinModal from './components/PinModal'
+import AuthGate from './components/AuthGate'
 import { useCards } from './hooks/useCards'
+import { useAuth } from './hooks/useAuth'
 import {
   createCard,
   deleteCard,
@@ -155,6 +157,7 @@ const DEFAULT_WRITEOFFS = { entries: [], templates: [] }
 const DEFAULT_STOP_LIST = []
 
 function App() {
+  const auth = useAuth()
   const { cards, loading, error, refresh, addLocalCard, updateLocalCard, removeLocalCard } = useCards()
   const [visitCount, setVisitCount] = useState(null)
   const [view, setView] = useState('list')
@@ -164,6 +167,7 @@ function App() {
   const [draftCard, setDraftCard] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [activeSection, setActiveSection] = useState('techcards')
+  const [authGateOpen, setAuthGateOpen] = useState(false)
   const [sectionContent, setSectionContent] = useState(() => ({
     ...DEFAULT_SECTION_CONTENT,
     ...(peekCachedSections() || {}),
@@ -228,6 +232,15 @@ function App() {
   useEffect(() => {
     bindNetworkSettleListeners()
   }, [])
+
+  // Auth gate only when VITE_AUTH_ENABLED=true — otherwise app works exactly as before.
+  useEffect(() => {
+    if (!auth.authRequired) {
+      setAuthGateOpen(false)
+      return
+    }
+    setAuthGateOpen(!auth.loading && !auth.isAuthenticated)
+  }, [auth.authRequired, auth.isAuthenticated, auth.loading])
 
   // Секции — лёгкий запрос после первого кадра, не блокирует список.
   useEffect(() => {
@@ -700,6 +713,17 @@ function App() {
 
   return (
     <div className="app-shell">
+      {auth.authRequired && auth.loading ? (
+        <div className="auth-boot" role="status" aria-live="polite">
+          Загрузка…
+        </div>
+      ) : null}
+      <AuthGate
+        isOpen={authGateOpen}
+        allowClose={false}
+        title="e-Bar"
+        onSuccess={() => setAuthGateOpen(false)}
+      />
       <div
         className={`screen-stack view-${view}${swipeDragging ? ' is-swiping' : ''}`}
         style={
@@ -710,6 +734,7 @@ function App() {
               }
             : undefined
         }
+        aria-hidden={authGateOpen || (auth.authRequired && auth.loading) ? true : undefined}
       >
         <section className="screen screen-list" aria-hidden={view !== 'list'}>
           <ListView

@@ -2460,3 +2460,122 @@ h1 {
     transform: translateX(-50%) translateY(0);
   }
 }
+
+/* Auth (Supabase) — inactive unless VITE_AUTH_ENABLED=true */
+.auth-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--text2);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at top, rgba(26, 26, 24, 0.08), transparent 42%),
+    linear-gradient(180deg, #f5f4f0 0%, #ebe8e1 100%);
+}
+
+.auth-screen-overlay {
+  background: rgba(26, 26, 24, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.auth-card {
+  width: min(380px, 100%);
+  background: #ffffff;
+  color: var(--text);
+  border-radius: 22px;
+  padding: 28px 22px 22px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.auth-brand {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+.auth-title {
+  margin: 10px 0 0;
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 28px;
+  line-height: 1.15;
+  color: var(--text);
+}
+
+.auth-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-form {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-input {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  text-align: left;
+}
+
+.auth-input:focus {
+  outline: 2px solid #1a1a18;
+  outline-offset: 1px;
+}
+
+.auth-submit {
+  min-height: 46px;
+  width: 100%;
+}
+
+.auth-error,
+.auth-success {
+  margin: 0;
+  font-size: 13px;
+  text-align: left;
+}
+
+.auth-success {
+  color: #295c22;
+  font-weight: 600;
+}
+
+.auth-links {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.auth-link {
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
