@@ -65,9 +65,72 @@ export async function getSession() {
   return result?.data?.session ?? null
 }
 
+function isBannedUser(user) {
+  if (!user) return false
+  const bannedUntil = user.banned_until || user.ban_duration
+  if (!bannedUntil) return false
+  if (bannedUntil === 'none' || bannedUntil === 'null') return false
+  const ts = Date.parse(String(bannedUntil))
+  if (Number.isNaN(ts)) return true
+  return ts > Date.now()
+}
+
+function isAuthRejection(error) {
+  if (!error) return false
+  const msg = String(error.message || error.error_description || error.code || '').toLowerCase()
+  const status = error.status || error.statusCode
+  if (status === 401 || status === 403) return true
+  return (
+    msg.includes('banned') ||
+    msg.includes('user_banned') ||
+    msg.includes('user is banned') ||
+    msg.includes('invalid jwt') ||
+    msg.includes('jwt expired') ||
+    msg.includes('session') && msg.includes('not') ||
+    msg.includes('refresh_token') ||
+    msg.includes('user not found') ||
+    msg.includes('user_not_found')
+  )
+}
+
+/**
+ * Local session from storage, then server check via getUser().
+ * Banned / deleted employees lose access even with an old device session.
+ */
+export async function validateSession() {
+  if (!isSupabaseConfigured) return null
+
+  const local = await getSession()
+  if (!local?.access_token) return null
+
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user) {
+    if (isAuthRejection(error) || !data?.user) {
+      try {
+        await supabase.auth.signOut({ scope: 'local' })
+      } catch {
+        // ignore
+      }
+    }
+    return null
+  }
+
+  if (isBannedUser(data.user)) {
+    try {
+      await supabase.auth.signOut({ scope: 'local' })
+    } catch {
+      // ignore
+    }
+    return null
+  }
+
+  // Prefer fresh session after possible token refresh during getUser.
+  return (await getSession()) || local
+}
+
 export async function initAuth() {
   if (!isSupabaseConfigured) return null
-  return getSession()
+  return validateSession()
 }
 
 export default supabase

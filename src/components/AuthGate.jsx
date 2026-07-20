@@ -35,6 +35,9 @@ function translateAuthError(err, context = 'signIn') {
   if (name.includes('authretryablefetcherror') || status === 500) {
     return 'Ошибка сервера. Попробуйте позже.'
   }
+  if (message.includes('banned') || message.includes('user_banned') || message.includes('user is banned')) {
+    return 'Доступ закрыт. Обратитесь к администратору.'
+  }
   if (message.includes('email not confirmed') || message.includes('email_not_confirmed')) {
     return 'Email не подтверждён. В Supabase выключите Confirm email для команды.'
   }
