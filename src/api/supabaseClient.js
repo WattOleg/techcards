@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY = String(
   import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
 ).trim()
 
-/** Explicit opt-in so production stays unchanged until you set VITE_AUTH_ENABLED=true. */
+/** Set VITE_AUTH_ENABLED=true to require login (see .env / .env.production). */
 export const isAuthEnabled =
   String(import.meta.env.VITE_AUTH_ENABLED || '').trim().toLowerCase() === 'true'
 
