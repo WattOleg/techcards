@@ -1,11 +1,15 @@
-const STATIC_CACHE = 'tk-static-v5'
-const RUNTIME_CACHE = 'tk-runtime-v5'
+const STATIC_CACHE = 'tk-static-v6'
+const RUNTIME_CACHE = 'tk-runtime-v6'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/e-Bar.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()),
   )
+})
+
+self.addEventListener('message', (event) => {
+  if (event?.data?.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
@@ -19,6 +23,16 @@ self.addEventListener('activate', (event) => {
   )
 })
 
+function isLiveApiHost(hostname) {
+  // Эти origin нельзя кэшировать в SW: иначе PWA на телефоне показывает устаревший [] после успешной записи.
+  return (
+    hostname === 'script.google.com' ||
+    hostname === 'script.googleusercontent.com' ||
+    hostname.endsWith('.supabase.co') ||
+    hostname === 'supabase.co'
+  )
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   let url
@@ -27,16 +41,14 @@ self.addEventListener('fetch', (event) => {
   } catch {
     return
   }
-  // Apps Script нельзя гонять через SW: иначе на iOS «Failed to fetch» / пустой ответ из-за
-  // Promise, резолвящегося в null, и кэша чужого origin.
-  if (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com') {
+
+  if (isLiveApiHost(url.hostname)) {
     return
   }
   if (request.method !== 'GET') return
   const isImageRequest = request.destination === 'image'
 
   // Avoid stale/broken cached remote images (especially Drive links).
-  // Always try network first for images; fall back to cache when offline.
   if (isImageRequest) {
     event.respondWith(
       fetch(request).catch(async () => {
@@ -69,7 +81,7 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Network-first for same-origin static (JS/CSS с хэшами) — иначе PWA долго держит старый билд.
+  // Network-first for same-origin static (JS/CSS с хэшами).
   if (url.origin === self.location.origin) {
     event.respondWith(
       fetch(request)
@@ -85,21 +97,6 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Stale-while-revalidate for API/remote GETs.
-  event.respondWith(
-    caches.match(request).then(async (cached) => {
-      const networkPromise = fetch(request)
-        .then((res) => {
-          if (res && res.ok && res.status === 200) {
-            const copy = res.clone()
-            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy).catch(() => {}))
-          }
-          return res
-        })
-        .catch(() => Response.error())
-
-      if (cached) return cached
-      return networkPromise
-    }),
-  )
+  // Прочие remote GET — только сеть (без stale-while-revalidate).
+  event.respondWith(fetch(request).catch(() => Response.error()))
 })

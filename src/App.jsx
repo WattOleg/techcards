@@ -652,43 +652,53 @@ function App() {
     setWriteoffsSaving(true)
     setWriteoffsSaveError('')
     try {
-      await mutateWriteoffs(payload, writeoffsPin)
+      const result = await mutateWriteoffs(payload, writeoffsPin)
+      // Сразу обновляем UI из ответа мутации — на PWA reload GET мог отдать устаревший кэш SW.
+      if (payload.op === 'append' && (result?.entry || payload.entry)) {
+        const entry = result?.entry || payload.entry
+        setWriteoffsData((prev) => {
+          const list = Array.isArray(prev.entries) ? prev.entries : []
+          const next = {
+            templates: Array.isArray(prev.templates) ? prev.templates : [],
+            entries: [entry, ...list.filter((e) => e.id !== entry.id)],
+          }
+          syncWriteoffsOfflineCache(next)
+          return next
+        })
+      } else if (payload.op === 'delete' && payload.id) {
+        setWriteoffsData((prev) => {
+          const next = {
+            templates: Array.isArray(prev.templates) ? prev.templates : [],
+            entries: (Array.isArray(prev.entries) ? prev.entries : []).filter((e) => e.id !== payload.id),
+          }
+          syncWriteoffsOfflineCache(next)
+          return next
+        })
+      } else if (payload.op === 'update' && (result?.entry || payload.entry)) {
+        const entry = result?.entry || payload.entry
+        setWriteoffsData((prev) => {
+          const list = Array.isArray(prev.entries) ? prev.entries : []
+          const next = {
+            templates: Array.isArray(prev.templates) ? prev.templates : [],
+            entries: list.map((e) => (e.id === entry.id ? entry : e)),
+          }
+          syncWriteoffsOfflineCache(next)
+          return next
+        })
+      } else if (payload.op === 'templates' && Array.isArray(payload.templates)) {
+        setWriteoffsData((prev) => {
+          const next = {
+            entries: Array.isArray(prev.entries) ? prev.entries : [],
+            templates: payload.templates.map((t) => ({ ...t })),
+          }
+          syncWriteoffsOfflineCache(next)
+          return next
+        })
+      }
       try {
         await reloadWriteoffsFromSheet()
-      } catch (reloadErr) {
-        if (payload.op === 'append' && payload.entry) {
-          setWriteoffsData((prev) => {
-            const list = Array.isArray(prev.entries) ? prev.entries : []
-            const entry = payload.entry
-            const next = {
-              templates: Array.isArray(prev.templates) ? prev.templates : [],
-              entries: [entry, ...list.filter((e) => e.id !== entry.id)],
-            }
-            syncWriteoffsOfflineCache(next)
-            return next
-          })
-          setWriteoffsSaveError(
-            reloadErr.message ||
-              'Строка записана в таблицу, но список не удалось обновить. Проверьте сеть и нажмите «Обновить из таблицы».',
-          )
-          return
-        }
-        if (payload.op === 'templates' && Array.isArray(payload.templates)) {
-          setWriteoffsData((prev) => {
-            const next = {
-              entries: Array.isArray(prev.entries) ? prev.entries : [],
-              templates: payload.templates.map((t) => ({ ...t })),
-            }
-            syncWriteoffsOfflineCache(next)
-            return next
-          })
-          setWriteoffsSaveError(
-            reloadErr.message ||
-              'Шаблоны записаны в таблицу, но список не удалось обновить. Нажмите «Обновить из таблицы».',
-          )
-          return
-        }
-        throw reloadErr
+      } catch {
+        // UI уже обновлён локально
       }
     } catch (err) {
       setWriteoffsSaveError(err.message || 'Ошибка сохранения списаний')
@@ -720,8 +730,21 @@ function App() {
     setStopListSaving(true)
     setStopListError('')
     try {
-      await mutateStopList(payload)
-      await reloadStopList()
+      const result = await mutateStopList(payload)
+      if (payload.op === 'append' && (result?.entry || payload.entry)) {
+        const entry = result?.entry || payload.entry
+        setStopListData((prev) => {
+          const list = Array.isArray(prev) ? prev : []
+          return [entry, ...list.filter((x) => x.id !== entry.id)]
+        })
+      } else if (payload.op === 'delete' && payload.id) {
+        setStopListData((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== payload.id) : []))
+      }
+      try {
+        await reloadStopList()
+      } catch {
+        // UI уже обновлён локально
+      }
     } catch (err) {
       setStopListError(err.message || 'Ошибка сохранения стоп-листа')
       throw err

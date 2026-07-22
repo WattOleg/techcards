@@ -51,8 +51,8 @@ const OFFLINE_KEYS = {
   cardsAll: 'tk_offline_cards_all_v1',
   sections: 'tk_offline_sections_v1',
   schedule: 'tk_offline_schedule_v1',
-  writeoffs: 'tk_offline_writeoffs_v2',
-  stopList: 'tk_offline_stoplist_v2',
+  writeoffs: 'tk_offline_writeoffs_v3',
+  stopList: 'tk_offline_stoplist_v3',
 }
 
 function readOffline(key, fallback) {

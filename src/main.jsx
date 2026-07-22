@@ -9,8 +9,20 @@ const LS_KEY = 'tk_app_visit_count'
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // ignore sw registration errors
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        // Форсируем проверку обновления SW при каждом открытии PWA с домашнего экрана.
+        reg.update().catch(() => {})
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' })
+      })
+      .catch(() => {})
+
+    let refreshing = false
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return
+      refreshing = true
+      window.location.reload()
     })
   })
 }
