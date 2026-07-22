@@ -73,6 +73,7 @@ const DEFAULT_SCHEDULE = {
   shifts: [],
   shortageByMonth: {},
   bonusesByMonth: {},
+  deductionsByMonth: {},
 }
 
 function normalizeScheduleServer(s) {
@@ -85,6 +86,10 @@ function normalizeScheduleServer(s) {
   const bonusesByMonth =
     raw.bonusesByMonth && typeof raw.bonusesByMonth === 'object' && !Array.isArray(raw.bonusesByMonth)
       ? { ...raw.bonusesByMonth }
+      : {}
+  const deductionsByMonth =
+    raw.deductionsByMonth && typeof raw.deductionsByMonth === 'object' && !Array.isArray(raw.deductionsByMonth)
+      ? { ...raw.deductionsByMonth }
       : {}
   const employeesByMonth =
     raw.employeesByMonth && typeof raw.employeesByMonth === 'object' && !Array.isArray(raw.employeesByMonth)
@@ -103,6 +108,7 @@ function normalizeScheduleServer(s) {
     })),
     shortageByMonth,
     bonusesByMonth,
+    deductionsByMonth,
     employeesByMonth,
   }
 }

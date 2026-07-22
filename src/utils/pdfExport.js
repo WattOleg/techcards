@@ -219,7 +219,7 @@ function scheduleToPdfContent(payload) {
       { text: String(summary.totalGross), style: 'footCell', alignment: 'right' },
     ],
     [
-      { text: 'Недостача за месяц', style: 'footCell', colSpan: 3 },
+      { text: 'Вычеты всего', style: 'footCell', colSpan: 3 },
       {},
       {},
       { text: String(summary.shortage), style: 'footCell', alignment: 'right' },

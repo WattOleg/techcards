@@ -1,7 +1,24 @@
 import { getGasClientBaseUrl } from '../config/gasBaseUrl.js'
 import { reportServerReachable, reportServerUnreachable } from '../utils/serverStatus.js'
+import {
+  fetchStopListFromSupabase,
+  fetchWriteoffsFromSupabase,
+  mutateStopListInSupabase,
+  mutateWriteoffsInSupabase,
+} from './opsSupabase.js'
 
 const BASE_URL = getGasClientBaseUrl()
+
+/** Списания + стоп-лист: supabase | sheets (Apps Script). */
+export function getOpsBackend() {
+  const raw = String(import.meta.env.VITE_OPS_BACKEND || '').trim().toLowerCase()
+  if (raw === 'supabase' || raw === 'sheets') return raw
+  return 'sheets'
+}
+
+function useSupabaseOps() {
+  return getOpsBackend() === 'supabase'
+}
 
 /** Путь вида /api/gas — тот же origin (Vercel + serverless-прокси), без new URL(). */
 function isSameOriginProxyPath(url) {
@@ -34,8 +51,8 @@ const OFFLINE_KEYS = {
   cardsAll: 'tk_offline_cards_all_v1',
   sections: 'tk_offline_sections_v1',
   schedule: 'tk_offline_schedule_v1',
-  writeoffs: 'tk_offline_writeoffs_v1',
-  stopList: 'tk_offline_stoplist_v1',
+  writeoffs: 'tk_offline_writeoffs_v2',
+  stopList: 'tk_offline_stoplist_v2',
 }
 
 function readOffline(key, fallback) {
@@ -427,6 +444,7 @@ const mockSchedule = {
   shifts: [],
   shortageByMonth: {},
   bonusesByMonth: {},
+  deductionsByMonth: {},
 }
 
 const mockWriteoffs = {
@@ -522,6 +540,17 @@ export async function verifyPayrollPin({ employeeId, pin, monthKey }) {
 }
 
 export async function fetchWriteoffs() {
+  if (useSupabaseOps()) {
+    try {
+      const writeoffs = await fetchWriteoffsFromSupabase()
+      writeOffline(OFFLINE_KEYS.writeoffs, writeoffs)
+      return writeoffs
+    } catch (err) {
+      const cached = readOffline(OFFLINE_KEYS.writeoffs, null)
+      if (cached && typeof cached === 'object') return cached
+      throw err
+    }
+  }
   if (!BASE_URL) {
     return offlineWriteoffsState()
   }
@@ -540,8 +569,12 @@ export async function fetchWriteoffs() {
 
 /**
  * Списания: короткий GET к Apps Script (без JSON в query) + POST только для шаблонов.
+ * При VITE_OPS_BACKEND=supabase — запись в Supabase.
  */
 export async function mutateWriteoffs(payload, pin) {
+  if (useSupabaseOps()) {
+    return mutateWriteoffsInSupabase(payload, pin)
+  }
   const op = String(payload?.op || '').trim()
   if (!op) throw new Error('Не указана операция')
 
@@ -674,6 +707,17 @@ function persistOfflineStopList(state) {
 }
 
 export async function fetchStopList() {
+  if (useSupabaseOps()) {
+    try {
+      const stopList = await fetchStopListFromSupabase()
+      writeOffline(OFFLINE_KEYS.stopList, stopList)
+      return stopList
+    } catch (err) {
+      const cached = readOffline(OFFLINE_KEYS.stopList, null)
+      if (Array.isArray(cached)) return cached
+      throw err
+    }
+  }
   if (!BASE_URL) {
     return offlineStopListState()
   }
@@ -691,6 +735,9 @@ export async function fetchStopList() {
 }
 
 export async function mutateStopList(payload) {
+  if (useSupabaseOps()) {
+    return mutateStopListInSupabase(payload)
+  }
   const op = String(payload?.op || '').trim()
   if (!op) throw new Error('Не указана операция')
 

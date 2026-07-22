@@ -248,7 +248,6 @@ function ScheduleView({
   }, [totals])
 
   const shortageMap = data.shortageByMonth || {}
-  const hasShortageKey = Object.prototype.hasOwnProperty.call(shortageMap, monthKey)
   const shortageAmount = tenge(Math.max(0, Number(shortageMap[monthKey]) || 0))
   const shortageCents = shortageAmount * 100
   const bonusesByMonth = data.bonusesByMonth || {}
@@ -256,34 +255,44 @@ function ScheduleView({
     bonusesByMonth[monthKey] && typeof bonusesByMonth[monthKey] === 'object' && !Array.isArray(bonusesByMonth[monthKey])
       ? bonusesByMonth[monthKey]
       : {}
+  const deductionsByMonth = data.deductionsByMonth || {}
+  const hasDeductionsKey =
+    deductionsByMonth[monthKey] &&
+    typeof deductionsByMonth[monthKey] === 'object' &&
+    !Array.isArray(deductionsByMonth[monthKey])
+  const monthDeductions = hasDeductionsKey ? deductionsByMonth[monthKey] : {}
 
-  const { employeePayouts, netPay } = useMemo(() => {
+  const { employeePayouts, netPay, totalDeductions } = useMemo(() => {
     const emps = monthEmployees || []
-    const grossCents = emps.map((e) => {
-      const t = totals[e.id] || { hours: 0, pay: 0 }
-      return tenge(t.pay || 0) * 100
-    })
-    const dedCents = shortageDeductionsEqualCents(emps.length, shortageCents)
+    const usePerEmployee = hasDeductionsKey
+    const legacyDedCents = usePerEmployee
+      ? null
+      : shortageDeductionsEqualCents(emps.length, shortageCents)
     let totalNetTenge = 0
+    let totalDedTenge = 0
     const rows = emps.map((e, i) => {
       const t = totals[e.id] || { hours: 0, pay: 0 }
-      const gC = grossCents[i] || 0
-      const dC = dedCents[i] || 0
+      const gC = tenge(t.pay || 0) * 100
+      const dC = usePerEmployee
+        ? tenge(Math.max(0, Number(monthDeductions[e.id]) || 0)) * 100
+        : legacyDedCents[i] || 0
       const bonus = tenge(Number(monthBonuses[e.id]) || 0)
       const nC = Math.max(0, gC - dC + bonus * 100)
       const netTenge = Math.round(nC / 100)
+      const deduction = Math.round(dC / 100)
       totalNetTenge += netTenge
+      totalDedTenge += deduction
       return {
         id: e.id,
         hours: t.hours,
         gross: gC / 100,
-        deduction: Math.round(dC / 100),
+        deduction,
         bonus,
         net: netTenge,
       }
     })
-    return { employeePayouts: rows, netPay: totalNetTenge }
-  }, [monthEmployees, totals, shortageCents, monthBonuses])
+    return { employeePayouts: rows, netPay: totalNetTenge, totalDeductions: totalDedTenge }
+  }, [monthEmployees, totals, shortageCents, monthBonuses, monthDeductions, hasDeductionsKey])
   const payoutById = useMemo(
     () => new Map(employeePayouts.map((row) => [row.id, row])),
     [employeePayouts],
@@ -355,16 +364,25 @@ function ScheduleView({
     return { hours, gross: null, net: null, hourlyRate: null, locked: true }
   }
 
-  const setShortageForMonth = (raw) => {
-    const sm = { ...shortageMap }
-    if (raw === '' || raw === null) {
-      delete sm[monthKey]
-      onChange({ ...data, shortageByMonth: sm })
-      return
+  const setDeductionForEmployeeMonth = (employeeId, raw) => {
+    const all = { ...(data.deductionsByMonth || {}) }
+    const currentMonth = {
+      ...(all[monthKey] && typeof all[monthKey] === 'object' && !Array.isArray(all[monthKey]) ? all[monthKey] : {}),
     }
-    const v = tenge(Math.max(0, Number(raw) || 0))
-    sm[monthKey] = v
-    onChange({ ...data, shortageByMonth: sm })
+    if (raw === '' || raw === null) {
+      delete currentMonth[employeeId]
+    } else {
+      currentMonth[employeeId] = tenge(Math.max(0, Number(raw) || 0))
+    }
+    if (Object.keys(currentMonth).length === 0) {
+      delete all[monthKey]
+    } else {
+      all[monthKey] = currentMonth
+    }
+    // Сбрасываем старую общую недостачу для месяца — дальше только индивидуальные вычеты.
+    const sm = { ...(data.shortageByMonth || {}) }
+    delete sm[monthKey]
+    onChange({ ...data, deductionsByMonth: all, shortageByMonth: sm })
   }
 
   const setBonusForEmployeeMonth = (employeeId, raw) => {
@@ -457,6 +475,13 @@ function ScheduleView({
       delete copy[id]
       if (Object.keys(copy).length) nextBonuses[mk] = copy
     })
+    const nextDeductions = {}
+    Object.entries(data.deductionsByMonth || {}).forEach(([mk, monthMap]) => {
+      if (!monthMap || typeof monthMap !== 'object' || Array.isArray(monthMap)) return
+      const copy = { ...monthMap }
+      delete copy[id]
+      if (Object.keys(copy).length) nextDeductions[mk] = copy
+    })
     onChange({
       ...data,
       employeesByMonth: {
@@ -465,6 +490,7 @@ function ScheduleView({
       },
       shifts: (data.shifts || []).filter((s) => !(s.employeeId === id && String(s.date || '').startsWith(monthKey))),
       bonusesByMonth: nextBonuses,
+      deductionsByMonth: nextDeductions,
     })
   }
 
@@ -659,7 +685,7 @@ function ScheduleView({
             rows: summaryRows,
             totalHours: grandTotal.hours,
             totalGross: tenge(grandTotal.pay),
-            shortage: hasShortageKey ? tenge(shortageAmount) : 0,
+            shortage: tenge(totalDeductions),
             netPay: tenge(netPay),
           }
         : null,
@@ -673,8 +699,7 @@ function ScheduleView({
     grandTotal.pay,
     monthLabel,
     monthKey,
-    hasShortageKey,
-    shortageAmount,
+    totalDeductions,
     netPay,
     canEdit,
   ])
@@ -1195,22 +1220,30 @@ function ScheduleView({
           <strong>{tenge(grandTotal.pay)} ₸</strong>
         </div>
         <div className="schedule-shortage-block">
-          <label className="schedule-shortage-label">
-            Недостача за месяц
-            <input
-              type="number"
-              min={0}
-              step={100}
-              className="schedule-shortage-input"
-              value={hasShortageKey ? shortageAmount : ''}
-              onChange={(e) => setShortageForMonth(e.target.value)}
-              disabled={!canEdit}
-              placeholder="0"
-            />
-            <span className="schedule-currency-suffix">₸</span>
-          </label>
+          <h5 className="schedule-bonus-title">Вычет за месяц</h5>
+          <div className="schedule-bonus-grid">
+            {(monthEmployees || []).map((e) => (
+              <label key={`ded-${e.id}`} className="schedule-bonus-row">
+                <span className="schedule-bonus-name">{e.name}</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={100}
+                  className="schedule-shortage-input"
+                  value={hasDeductionsKey ? (monthDeductions[e.id] ?? '') : ''}
+                  onChange={(ev) => setDeductionForEmployeeMonth(e.id, ev.target.value)}
+                  disabled={!canEdit}
+                  placeholder="0"
+                />
+                <span className="schedule-currency-suffix">₸</span>
+              </label>
+            ))}
+          </div>
           <p className="muted small">
-            Делится <strong>поровну</strong> между всеми сотрудниками в списке и вычитается в колонке «К выплате».
+            Вычитается из выплаты выбранного месяца для каждого сотрудника отдельно.
+            {!hasDeductionsKey && shortageAmount > 0
+              ? ' Сейчас ещё действует старая общая недостача (поровну) — задайте индивидуальные вычеты, чтобы заменить её.'
+              : null}
           </p>
         </div>
         <div className="schedule-shortage-block">

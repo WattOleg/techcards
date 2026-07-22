@@ -8,6 +8,8 @@ const SCHEDULE_SHEET_NAME = '_SCHEDULE'
 const SCHEDULE_MONTH_PREFIX = '_SCHEDULE_'
 const STATS_SHEET_NAME = '_APP_STATS'
 const STOP_LIST_SHEET_NAME = '_STOP_LIST'
+/** После миграции в Supabase запись в Sheets для списаний/стоп-листа отключена. */
+const OPS_MOVED_TO_SUPABASE = true
 /** Лента списаний: A–H — позиция, кол-во, ед., тип, сотрудник, дата, причина, UUID. Сначала ищем «старые» имена без лишнего _. */
 var WRITE_LOG_SHEET_NAMES = ['_WRITE_LOG', '_WRITE_LOG_']
 var WRITE_TPL_SHEET_NAMES = ['_WRITE_TPL', '_WRITE_TPL_']
@@ -21,11 +23,26 @@ function doGet(e) {
   if (action === 'getSchedule') return getSchedule()
   if (action === 'getWriteoffs') return getWriteoffs()
   if (action === 'getStopList') return getStopList()
-  if (action === 'appendSimpleWriteoff') return appendSimpleWriteoff_(e.parameter)
-  if (action === 'deleteSimpleWriteoff') return deleteSimpleWriteoff_(e.parameter)
-  if (action === 'updateSimpleWriteoff') return updateSimpleWriteoff_(e.parameter)
-  if (action === 'appendStopListItem') return appendStopListItem_(e.parameter)
-  if (action === 'deleteStopListItem') return deleteStopListItem_(e.parameter)
+  if (action === 'appendSimpleWriteoff') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'списания перенесены в Supabase — запись в Sheets отключена' })
+    return appendSimpleWriteoff_(e.parameter)
+  }
+  if (action === 'deleteSimpleWriteoff') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'списания перенесены в Supabase — запись в Sheets отключена' })
+    return deleteSimpleWriteoff_(e.parameter)
+  }
+  if (action === 'updateSimpleWriteoff') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'списания перенесены в Supabase — запись в Sheets отключена' })
+    return updateSimpleWriteoff_(e.parameter)
+  }
+  if (action === 'appendStopListItem') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'стоп-лист перенесён в Supabase — запись в Sheets отключена' })
+    return appendStopListItem_(e.parameter)
+  }
+  if (action === 'deleteStopListItem') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'стоп-лист перенесён в Supabase — запись в Sheets отключена' })
+    return deleteStopListItem_(e.parameter)
+  }
   if (action === 'logVisit') return logAppVisit()
   if (action === 'ping') return jsonResponse({ ok: true, t: Date.now() })
   return jsonResponse({ error: 'unknown action' })
@@ -56,10 +73,22 @@ function doPost(e) {
   if (body.action === 'updateSection') return updateSection(body)
   if (body.action === 'updateSchedule') return updateSchedule(body)
   if (body.action === 'verifyPayrollPin') return verifyPayrollPin(body)
-  if (body.action === 'updateWriteoffs') return updateWriteoffs(body)
-  if (body.action === 'appendSimpleWriteoffPost') return appendSimpleWriteoffPost_(body)
-  if (body.action === 'appendStopListItem') return appendStopListItem_(body)
-  if (body.action === 'deleteStopListItem') return deleteStopListItem_(body)
+  if (body.action === 'updateWriteoffs') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'списания перенесены в Supabase — запись в Sheets отключена' })
+    return updateWriteoffs(body)
+  }
+  if (body.action === 'appendSimpleWriteoffPost') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'списания перенесены в Supabase — запись в Sheets отключена' })
+    return appendSimpleWriteoffPost_(body)
+  }
+  if (body.action === 'appendStopListItem') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'стоп-лист перенесён в Supabase — запись в Sheets отключена' })
+    return appendStopListItem_(body)
+  }
+  if (body.action === 'deleteStopListItem') {
+    if (OPS_MOVED_TO_SUPABASE) return jsonResponse({ error: 'стоп-лист перенесён в Supabase — запись в Sheets отключена' })
+    return deleteStopListItem_(body)
+  }
   return jsonResponse({ error: 'unknown action' })
 }
 
@@ -748,6 +777,7 @@ function getDefaultScheduleData_() {
     shifts: [],
     shortageByMonth: {},
     bonusesByMonth: {},
+    deductionsByMonth: {},
   }
 }
 
@@ -880,10 +910,14 @@ function writeMonthScheduleSheet_(ss, monthKey, payload) {
 
 function readMonthSheetPayload_(sheet) {
   const raw = sheet.getRange(1, 1).getValue()
-  if (!raw || !String(raw).trim()) return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
+  if (!raw || !String(raw).trim()) {
+    return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {}, deductionsByMonth: {} }
+  }
   try {
     const p = JSON.parse(String(raw))
-    if (!p || typeof p !== 'object') return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
+    if (!p || typeof p !== 'object') {
+      return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {}, deductionsByMonth: {} }
+    }
     return {
       employees: Array.isArray(p.employees) ? p.employees : [],
       shifts: Array.isArray(p.shifts) ? p.shifts : [],
@@ -895,9 +929,13 @@ function readMonthSheetPayload_(sheet) {
         p.bonusesByMonth && typeof p.bonusesByMonth === 'object' && !Array.isArray(p.bonusesByMonth)
           ? p.bonusesByMonth
           : {},
+      deductionsByMonth:
+        p.deductionsByMonth && typeof p.deductionsByMonth === 'object' && !Array.isArray(p.deductionsByMonth)
+          ? p.deductionsByMonth
+          : {},
     }
   } catch (e) {
-    return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {} }
+    return { employees: [], shifts: [], shortageByMonth: {}, bonusesByMonth: {}, deductionsByMonth: {} }
   }
 }
 
@@ -1018,7 +1056,7 @@ function scheduleMonthDates_(monthKey) {
   return out
 }
 
-function computePayrollForEmployee_(employee, monthEmployees, monthShifts, monthKey, shortageAmount, monthBonuses, defaultStart, defaultEnd) {
+function computePayrollForEmployee_(employee, monthEmployees, monthShifts, monthKey, shortageAmount, monthBonuses, defaultStart, defaultEnd, monthDeductions) {
   var dates = scheduleMonthDates_(monthKey)
   var datesSet = {}
   dates.forEach(function (d) {
@@ -1035,28 +1073,25 @@ function computePayrollForEmployee_(employee, monthEmployees, monthShifts, month
     pay += h * rate
   })
   pay = Math.round(pay)
-  var empCount = monthEmployees.length
-  var shortageCents = Math.round(Math.max(0, Number(shortageAmount) || 0) * 100)
-  var grossCents = monthEmployees.map(function (e) {
-    var g = 0
-    monthShifts.forEach(function (s) {
-      if (String(s.employeeId) !== String(e.id)) return
-      if (!datesSet[s.date]) return
-      var h = scheduleShiftHours_(s, defaultStart, defaultEnd)
-      g += h * scheduleRateForDate_(s.date, e)
-    })
-    return Math.round(g) * 100
-  })
-  var dedCents = scheduleShortageDeductionsEqualCents_(empCount, shortageCents)
-  var empIndex = -1
-  for (var i = 0; i < monthEmployees.length; i++) {
-    if (String(monthEmployees[i].id) === String(employee.id)) {
-      empIndex = i
-      break
+  var gC = Math.round(pay) * 100
+  var hasPerEmployeeDed =
+    monthDeductions && typeof monthDeductions === 'object' && !Array.isArray(monthDeductions)
+  var dC
+  if (hasPerEmployeeDed) {
+    dC = Math.round(Math.max(0, Number(monthDeductions[employee.id]) || 0) * 100)
+  } else {
+    var empCount = monthEmployees.length
+    var shortageCents = Math.round(Math.max(0, Number(shortageAmount) || 0) * 100)
+    var dedCents = scheduleShortageDeductionsEqualCents_(empCount, shortageCents)
+    var empIndex = -1
+    for (var i = 0; i < monthEmployees.length; i++) {
+      if (String(monthEmployees[i].id) === String(employee.id)) {
+        empIndex = i
+        break
+      }
     }
+    dC = empIndex >= 0 ? dedCents[empIndex] || 0 : 0
   }
-  var gC = empIndex >= 0 ? grossCents[empIndex] || 0 : Math.round(pay) * 100
-  var dC = empIndex >= 0 ? dedCents[empIndex] || 0 : 0
   var bonus = Math.round(Math.max(0, Number(monthBonuses[employee.id]) || 0))
   var nC = Math.max(0, gC - dC + bonus * 100)
   return {
@@ -1116,6 +1151,15 @@ function verifyPayrollPin(body) {
   if (part.bonusesByMonth && part.bonusesByMonth[monthKey] && typeof part.bonusesByMonth[monthKey] === 'object') {
     monthBonuses = part.bonusesByMonth[monthKey]
   }
+  var monthDeductions = null
+  if (
+    part.deductionsByMonth &&
+    part.deductionsByMonth[monthKey] &&
+    typeof part.deductionsByMonth[monthKey] === 'object' &&
+    !Array.isArray(part.deductionsByMonth[monthKey])
+  ) {
+    monthDeductions = part.deductionsByMonth[monthKey]
+  }
   var payout = computePayrollForEmployee_(
     employee,
     monthEmployees,
@@ -1125,6 +1169,7 @@ function verifyPayrollPin(body) {
     monthBonuses,
     defaultStart,
     defaultEnd,
+    monthDeductions,
   )
   return jsonResponse({ success: true, payout: payout })
 }
@@ -1146,6 +1191,7 @@ function getSchedule() {
           shifts: [],
           shortageByMonth: {},
           bonusesByMonth: {},
+          deductionsByMonth: {},
         }
       }
     } catch (e) {
@@ -1155,6 +1201,7 @@ function getSchedule() {
   const allShifts = []
   const allShortage = {}
   const allBonuses = {}
+  const allDeductions = {}
   const employeesByMonth = {}
   ss.getSheets().forEach(function (sh) {
     if (!isScheduleMonthSheetName_(sh.getName())) return
@@ -1184,10 +1231,23 @@ function getSchedule() {
       }
       if (Object.keys(clean).length) allBonuses[String(bmk)] = clean
     }
+    for (var dmk in part.deductionsByMonth) {
+      if (!part.deductionsByMonth.hasOwnProperty(dmk)) continue
+      var dsrc = part.deductionsByMonth[dmk]
+      if (!dsrc || typeof dsrc !== 'object' || Array.isArray(dsrc)) continue
+      var dclean = {}
+      for (var did in dsrc) {
+        if (!dsrc.hasOwnProperty(did)) continue
+        var dn = Number(dsrc[did])
+        if (!isNaN(dn) && dn >= 0) dclean[String(did)] = dn
+      }
+      if (Object.keys(dclean).length) allDeductions[String(dmk)] = dclean
+    }
   })
   schedule.shifts = allShifts
   schedule.shortageByMonth = allShortage
   schedule.bonusesByMonth = allBonuses
+  schedule.deductionsByMonth = allDeductions
   schedule.employeesByMonth = employeesByMonth
   schedule.employees = []
   return jsonResponse({ schedule })
@@ -1219,6 +1279,21 @@ function updateSchedule(body) {
         if (!isNaN(bn) && bn >= 0) cleanMonth[String(empId)] = bn
       }
       if (Object.keys(cleanMonth).length) bonusesByMonth[String(bkey)] = cleanMonth
+    }
+  }
+  var deductionsByMonth = {}
+  if (next.deductionsByMonth && typeof next.deductionsByMonth === 'object' && !Array.isArray(next.deductionsByMonth)) {
+    for (var dkey in next.deductionsByMonth) {
+      if (!next.deductionsByMonth.hasOwnProperty(dkey)) continue
+      var dMonthObj = next.deductionsByMonth[dkey]
+      if (!dMonthObj || typeof dMonthObj !== 'object' || Array.isArray(dMonthObj)) continue
+      var dCleanMonth = {}
+      for (var dEmpId in dMonthObj) {
+        if (!dMonthObj.hasOwnProperty(dEmpId)) continue
+        var dn = Number(dMonthObj[dEmpId])
+        if (!isNaN(dn) && dn >= 0) dCleanMonth[String(dEmpId)] = dn
+      }
+      if (Object.keys(dCleanMonth).length) deductionsByMonth[String(dkey)] = dCleanMonth
     }
   }
   const safe = {
@@ -1291,6 +1366,9 @@ function updateSchedule(body) {
   for (var bk in bonusesByMonth) {
     if (bonusesByMonth.hasOwnProperty(bk)) monthKeys[String(bk)] = true
   }
+  for (var dk in deductionsByMonth) {
+    if (deductionsByMonth.hasOwnProperty(dk)) monthKeys[String(dk)] = true
+  }
   for (var emk in safe.employeesByMonth) {
     if (safe.employeesByMonth.hasOwnProperty(emk)) monthKeys[String(emk)] = true
   }
@@ -1305,6 +1383,7 @@ function updateSchedule(body) {
     shifts: [],
     shortageByMonth: {},
     bonusesByMonth: {},
+    deductionsByMonth: {},
   }
   globalSheet.getRange(1, 1).setValue(JSON.stringify(globalPayload))
 
@@ -1314,10 +1393,14 @@ function updateSchedule(body) {
       return monthKeyFromShiftDate_(s.date) === mk
     })
     var sm = {}
-    if (shortageByMonth[mk] !== undefined) sm[mk] = shortageByMonth[mk]
+    if (shortageByMonth[mk] !== undefined && !deductionsByMonth[mk]) sm[mk] = shortageByMonth[mk]
     var bm = {}
     if (bonusesByMonth[mk] && typeof bonusesByMonth[mk] === 'object' && !Array.isArray(bonusesByMonth[mk])) {
       bm[mk] = bonusesByMonth[mk]
+    }
+    var dm = {}
+    if (deductionsByMonth[mk] && typeof deductionsByMonth[mk] === 'object' && !Array.isArray(deductionsByMonth[mk])) {
+      dm[mk] = deductionsByMonth[mk]
     }
     var monthEmployeesRaw =
       safe.employeesByMonth[mk] && Array.isArray(safe.employeesByMonth[mk])
@@ -1372,6 +1455,7 @@ function updateSchedule(body) {
       shifts: monthShifts,
       shortageByMonth: sm,
       bonusesByMonth: bm,
+      deductionsByMonth: dm,
     })
   }
 
