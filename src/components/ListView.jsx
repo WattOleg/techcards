@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import AccountMenu from './AccountMenu'
 import CardItem from './CardItem'
 import InfoSectionBody from './InfoSectionBody'
 import SearchBar from './SearchBar'
@@ -25,6 +26,10 @@ function ListView({
   stopList,
   schedule,
   writeoffs,
+  authUser,
+  authEmail,
+  authRequired,
+  onSignOut,
 }) {
   const rootRef = useRef(null)
   const [query, setQuery] = useState('')
@@ -180,7 +185,12 @@ function ListView({
         <header className="list-header">
           <div className="title-menu-wrap">
             <div className="title-menu-btn">
-              <img src="/e-Bar.png" alt="e-Bar Cafe De Ghouli" className="title-logo" />
+              <AccountMenu
+                user={authUser}
+                email={authEmail}
+                authRequired={authRequired}
+                onSignOut={onSignOut}
+              />
               <h1>{activeSectionLabel}</h1>
             </div>
           </div>

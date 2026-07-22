@@ -752,6 +752,10 @@ function App() {
             onRefresh={refresh}
             onExportSelected={exportSelectedCards}
             onCreate={() => requestAction('create')}
+            authUser={auth.user}
+            authEmail={auth.email}
+            authRequired={auth.authRequired}
+            onSignOut={auth.signOut}
             stopList={{
               data: stopListData,
               loading: stopListLoading,

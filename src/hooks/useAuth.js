@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import supabase, {
+import {
   getSession,
   isAuthRequired,
   isSupabaseConfigured,
+  supabase,
   validateSession,
 } from '../api/supabaseClient'
 
 /**
- * Session from localStorage for fast open, then server re-check (ban → logout).
- * Re-validates when the app becomes visible again.
+ * Fast local restore + safe server re-check (ban only).
+ * Transient network errors no longer clear the session.
  */
 export function useAuth() {
   const [loading, setLoading] = useState(isAuthRequired)
@@ -42,14 +43,12 @@ export function useAuth() {
 
     let cancelled = false
     void (async () => {
-      // 1) Instant restore from device storage (no password).
       const local = await getSession()
       if (cancelled) return
       if (local?.user) {
         setSession(local)
         setLoading(false)
       }
-      // 2) Confirm with Supabase — banned / deleted users are signed out.
       await runValidation({ showLoader: !local?.user })
     })()
 
@@ -67,9 +66,15 @@ export function useAuth() {
         setLoading(false)
         return
       }
-      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+      if (event === 'TOKEN_REFRESHED') {
+        // Trust refresh; do not re-run getUser in a way that can race.
+        setSession(nextSession)
+        setLoading(false)
+        return
+      }
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         const ok = await validateSession()
-        setSession(ok)
+        setSession(ok || nextSession)
         setLoading(false)
         return
       }
@@ -85,6 +90,7 @@ export function useAuth() {
   useEffect(() => {
     if (!isAuthRequired || typeof window === 'undefined') return undefined
 
+    // Soft recheck on resume — validateSession keeps session on network blips.
     const recheck = () => {
       if (document.visibilityState === 'visible') {
         void runValidation({ showLoader: false })
