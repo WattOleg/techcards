@@ -18,6 +18,7 @@ export default function ServerLinkDot() {
       role="status"
       aria-live="polite"
       aria-label={label}
+      data-server-link={status}
     />
   )
 }

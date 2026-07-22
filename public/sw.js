@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'tk-static-v4'
-const RUNTIME_CACHE = 'tk-runtime-v4'
+const STATIC_CACHE = 'tk-static-v5'
+const RUNTIME_CACHE = 'tk-runtime-v5'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/e-Bar.png']
 
 self.addEventListener('install', (event) => {
@@ -69,18 +69,18 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Cache-first for same-origin static resources.
+  // Network-first for same-origin static (JS/CSS с хэшами) — иначе PWA долго держит старый билд.
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((res) => {
+      fetch(request)
+        .then((res) => {
+          if (res && res.ok) {
             const copy = res.clone()
-            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy))
-            return res
-          }),
-      ),
+            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy).catch(() => {}))
+          }
+          return res
+        })
+        .catch(async () => (await caches.match(request)) || Response.error()),
     )
     return
   }
