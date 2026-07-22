@@ -317,13 +317,24 @@ function App() {
     }
   }, [])
 
-  // Стоп-лист нужен на вкладке карточек — подтянуть тихо после старта, без конкуреции с getList.
+  // Стоп-лист нужен на вкладке карточек — подтянуть после старта и после логина.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadStopListFromNetwork({ showSpinner: false })
     }, 900)
     return () => window.clearTimeout(timer)
   }, [loadStopListFromNetwork])
+
+  useEffect(() => {
+    if (!auth.isAuthenticated) return undefined
+    const timer = window.setTimeout(() => {
+      void loadStopListFromNetwork({ showSpinner: false })
+      if (writeoffsSessionLoadedRef.current || activeSection === 'writeoffs') {
+        void loadWriteoffsFromNetwork({ showSpinner: false })
+      }
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [auth.isAuthenticated, activeSection, loadStopListFromNetwork, loadWriteoffsFromNetwork])
 
   // График / списания — при первом заходе на вкладку (кэш уже на экране).
   useEffect(() => {
@@ -627,7 +638,7 @@ function App() {
     }
   }
 
-  const writeoffsPin = import.meta.env.VITE_PIN_CODE
+  const writeoffsPin = String(import.meta.env.VITE_PIN_CODE || '1234')
 
   const reloadWriteoffsFromSheet = async () => {
     const fresh = await fetchWriteoffs()

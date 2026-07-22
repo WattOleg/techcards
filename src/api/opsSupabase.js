@@ -70,8 +70,17 @@ export async function fetchWriteoffsFromSupabase() {
 
 export async function mutateWriteoffsInSupabase(payload, pin) {
   assertConfigured()
-  const expected = String(import.meta.env.VITE_PIN_CODE || '1234')
-  if (String(pin || '') !== expected) {
+  // PIN — тот же VITE_PIN_CODE, что для карточек; на проде обязан быть в .env.production / Vercel.
+  const expected = String(import.meta.env.VITE_PIN_CODE || '1234').trim()
+  const got = String(pin ?? '').trim()
+  if (!got || got !== expected) {
+    console.error('APPS SCRIPT ERROR:', {
+      message: 'PIN mismatch for writeoffs',
+      name: 'PinError',
+      online: typeof navigator !== 'undefined' ? navigator.onLine : undefined,
+      hasPin: Boolean(got),
+      expectedLen: expected.length,
+    })
     throw new Error('Неверный PIN')
   }
 

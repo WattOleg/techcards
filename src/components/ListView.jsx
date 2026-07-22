@@ -162,12 +162,16 @@ function ListView({
   const submitStopListItem = async () => {
     const item = stopItemName.trim()
     if (!item || !stopList?.onAdd) return
-    await stopList.onAdd({
-      id: `tmp_${Date.now()}`,
-      item,
-      date: stopItemDate || new Date().toISOString().slice(0, 10),
-    })
-    setStopItemName('')
+    try {
+      await stopList.onAdd({
+        id: `tmp_${Date.now()}`,
+        item,
+        date: stopItemDate || new Date().toISOString().slice(0, 10),
+      })
+      setStopItemName('')
+    } catch {
+      // ошибка уже в stopList.error
+    }
   }
 
   const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label || 'Карточки'
