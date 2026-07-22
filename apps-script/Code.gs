@@ -27,7 +27,18 @@ function doGet(e) {
   if (action === 'appendStopListItem') return appendStopListItem_(e.parameter)
   if (action === 'deleteStopListItem') return deleteStopListItem_(e.parameter)
   if (action === 'logVisit') return logAppVisit()
+  if (action === 'ping') return jsonResponse({ ok: true, t: Date.now() })
   return jsonResponse({ error: 'unknown action' })
+}
+
+/**
+ * CORS preflight (OPTIONS). ContentService не даёт выставить Access-Control-* вручную —
+ * Google отдаёт CORS сам для «простых» запросов. Главный обход на клиенте:
+ * Content-Type: text/plain (без preflight). doOptions оставляем на случай,
+ * если платформа всё же прокинет OPTIONS до скрипта.
+ */
+function doOptions() {
+  return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT)
 }
 
 function doPost(e) {

@@ -48,6 +48,16 @@ export default async function handler(req, res) {
       }
     }
 
+    if (req.method === 'OPTIONS') {
+      res.status(204)
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+      res.setHeader('Access-Control-Max-Age', '86400')
+      res.send('')
+      return
+    }
+
     if (req.method === 'GET') {
       const r = await fetch(target.toString(), {
         method: 'GET',
@@ -66,21 +76,37 @@ export default async function handler(req, res) {
       if (typeof req.body === 'string') rawBody = req.body
       else if (Buffer.isBuffer(req.body)) rawBody = req.body.toString('utf8')
       else if (req.body && typeof req.body === 'object') rawBody = JSON.stringify(req.body)
-      const r = await fetch(target.toString(), {
-        method: 'POST',
-        redirect: 'follow',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: rawBody,
-      })
-      const text = await r.text()
-      const ct = r.headers.get('content-type') || 'application/json; charset=utf-8'
-      res.status(r.status).setHeader('Content-Type', ct)
+      let lastErr = null
+      let text = ''
+      let status = 502
+      let ct = 'application/json; charset=utf-8'
+      // Retry: на LTE редирект script.google.com → googleusercontent часто рвётся с первого раза.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const r = await fetch(target.toString(), {
+            method: 'POST',
+            redirect: 'follow',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: rawBody,
+          })
+          text = await r.text()
+          status = r.status
+          ct = r.headers.get('content-type') || 'application/json; charset=utf-8'
+          lastErr = null
+          break
+        } catch (e) {
+          lastErr = e
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
+        }
+      }
+      if (lastErr) throw lastErr
+      res.status(status).setHeader('Content-Type', ct)
       res.send(text)
       return
     }
 
-    res.setHeader('Allow', 'GET, POST')
+    res.setHeader('Allow', 'GET, POST, OPTIONS')
     res.status(405).setHeader('Content-Type', 'application/json; charset=utf-8')
     res.send(JSON.stringify({ error: 'method not allowed' }))
   } catch (e) {

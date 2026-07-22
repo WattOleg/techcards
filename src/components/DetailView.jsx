@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getPhotoCandidates } from '../utils/photoUrl'
+import ServerLinkDot from './ServerLinkDot'
 
 function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare }) {
   const photoCandidates = useMemo(() => getPhotoCandidates(card?.photoUrl), [card?.photoUrl])
@@ -39,9 +40,12 @@ function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare
           <button type="button" className="icon-btn" onClick={onBack}>
             ←
           </button>
-          <button type="button" className="icon-btn" onClick={onEdit}>
-            Изменить
-          </button>
+          <div className="hero-top-trailing">
+            <ServerLinkDot />
+            <button type="button" className="icon-btn" onClick={onEdit}>
+              Изменить
+            </button>
+          </div>
         </div>
       </div>
 

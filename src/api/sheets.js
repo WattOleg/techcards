@@ -1,4 +1,5 @@
 import { getGasClientBaseUrl } from '../config/gasBaseUrl.js'
+import { reportServerReachable, reportServerUnreachable } from '../utils/serverStatus.js'
 
 const BASE_URL = getGasClientBaseUrl()
 
@@ -107,32 +108,61 @@ function translateGasError(raw) {
   return s
 }
 
-async function requestJson(url, options) {
+function logAppsScriptFetchError(error, meta = {}) {
+  const conn =
+    typeof navigator !== 'undefined'
+      ? navigator.connection || navigator.mozConnection || navigator.webkitConnection
+      : null
+  console.error('APPS SCRIPT ERROR:', {
+    message: error?.message,
+    name: error?.name,
+    online: typeof navigator !== 'undefined' ? navigator.onLine : undefined,
+    connection: conn?.effectiveType,
+    ...meta,
+  })
+}
+
+/**
+ * Единый fetch к Apps Script / прокси.
+ * POST: Content-Type text/plain (без CORS preflight OPTIONS — критично на мобильном LTE).
+ * redirect: 'follow' — GAS отвечает 302 на googleusercontent; на мобильных сетях редирект нестабилен → retry.
+ */
+async function requestJson(url, options = {}) {
   const retries = 2
   let lastError = null
+  const method = String(options.method || 'GET').toUpperCase()
+  const isPost = method === 'POST'
 
-  // Не ставить Content-Type: application/json на POST к Apps Script: это включает CORS preflight
-  // (OPTIONS), который у веб‑приложений GAS часто падает с телефона. Тело всё равно приходит в
-  // postData.contents; fetch по умолчанию шлёт text/plain для строки — «простой» запрос.
+  const baseHeaders = { ...(options.headers || {}) }
+  if (isPost) {
+    // Явно text/plain: иначе кто-то может передать application/json и снова включить preflight.
+    baseHeaders['Content-Type'] = 'text/plain;charset=utf-8'
+  }
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     let res
     try {
       res = await fetch(url, {
         ...options,
+        method,
+        headers: baseHeaders,
+        mode: 'cors',
+        redirect: 'follow',
         cache: 'no-store',
       })
     } catch (err) {
       lastError = err
+      logAppsScriptFetchError(err, { url, method, attempt, stage: 'fetch' })
       // Abort — не ретраим (таймаут вызывающего кода); иначе быстрее сдаёмся в localStorage.
       if (err?.name === 'AbortError' || options?.signal?.aborted) {
         throw err
       }
       if (attempt < retries) {
-        // Короче на старте: длинный backoff замедлял ощущение «сломалось».
-        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+        // 500ms + backoff: прикрывает обрыв редиректа GAS на мобильных сетях.
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
         continue
       }
+      reportServerUnreachable()
       throw new Error(
         'Не удалось подключиться к серверу. Проверьте URL (VITE_APPS_SCRIPT_URL), деплой Apps Script и доступ «Anyone».',
       )
@@ -143,25 +173,32 @@ async function requestJson(url, options) {
     try {
       data = text ? JSON.parse(text) : {}
     } catch {
+      reportServerUnreachable()
       throw new Error(
         'Ответ сервера не JSON (часто неверный URL деплоя или страница входа Google). Проверьте VITE_APPS_SCRIPT_URL.',
       )
     }
     if (!res.ok) {
       if (attempt < retries && res.status >= 500) {
-        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)))
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
         continue
       }
       if (!data.error && res.status === 403) {
+        reportServerUnreachable()
         throw new Error('Доступ запрещён (403). В деплое Apps Script включите «Anyone».')
       }
+      // Логическая ошибка API (PIN и т.п.) — сервер доступен.
+      reportServerReachable()
       throw new Error(translateGasError(data.error) || `Ошибка ответа сервера (${res.status})`)
     }
     if (data && data.error) {
+      reportServerReachable()
       throw new Error(translateGasError(data.error))
     }
+    reportServerReachable()
     return data
   }
+  reportServerUnreachable()
   throw lastError || new Error('Ошибка сети')
 }
 

@@ -4,6 +4,7 @@ import CardItem from './CardItem'
 import InfoSectionBody from './InfoSectionBody'
 import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
+import ServerLinkDot from './ServerLinkDot'
 import WriteoffsView from './WriteoffsView'
 
 const INFO_SECTION_IDS = ['regulations', 'appearance', 'behavior', 'rights']
@@ -195,6 +196,7 @@ function ListView({
             </div>
           </div>
           <div className="list-header-badges">
+            <ServerLinkDot />
             {visitCount != null ? (
               <div
                 className="app-visit-counter"

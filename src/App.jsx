@@ -28,6 +28,7 @@ import {
 import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
 import { bindNetworkSettleListeners } from './utils/network'
+import { startServerLinkMonitor } from './hooks/useServerLink'
 
 function makeEmptyCard() {
   const today = new Date().toISOString().slice(0, 10)
@@ -231,6 +232,7 @@ function App() {
 
   useEffect(() => {
     bindNetworkSettleListeners()
+    return startServerLinkMonitor()
   }, [])
 
   // Auth gate only when VITE_AUTH_ENABLED=true — otherwise app works exactly as before.

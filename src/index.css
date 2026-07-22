@@ -160,6 +160,38 @@ button,
   flex-shrink: 0;
 }
 
+.server-link-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.server-link-dot.is-ok {
+  background: #2f9e44;
+}
+
+.server-link-dot.is-down {
+  background: #e03131;
+}
+
+.server-link-dot.is-unknown {
+  background: #adb5bd;
+  animation: server-link-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes server-link-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .title-menu-wrap {
   position: relative;
 }
@@ -836,6 +868,17 @@ h1 {
   inset: 10px 10px auto 10px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.hero-top-trailing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-top-trailing .server-link-dot {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
 }
 
 .icon-btn {
