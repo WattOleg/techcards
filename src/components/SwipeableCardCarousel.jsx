@@ -3,6 +3,7 @@ import Card from './Card'
 
 /**
  * Переиспользуемая карусель с peek-эффектом и CSS scroll-snap.
+ * Горизонтальный скролл — нативный (touch на мобиле), не mouse-drag polyfill.
  *
  * @param {{
  *   cards: Array<{ id: string|number, title: string, body?: import('react').ReactNode, imageUrl?: string }>,
@@ -37,7 +38,8 @@ export default function SwipeableCardCarousel({
     setActiveIndex(0)
     const track = trackRef.current
     if (track) track.scrollTo({ left: 0 })
-  }, [cardsKey])
+    slideRefs.current = slideRefs.current.slice(0, list.length)
+  }, [cardsKey, list.length])
 
   useEffect(() => {
     const track = trackRef.current
@@ -56,7 +58,7 @@ export default function SwipeableCardCarousel({
       },
       {
         root: track,
-        threshold: [0.55, 0.7, 0.85],
+        threshold: [0.45, 0.6, 0.75],
       },
     )
 
@@ -66,6 +68,42 @@ export default function SwipeableCardCarousel({
 
     return () => observer.disconnect()
   }, [cardsKey, list.length])
+
+  // iOS: не даём родительскому вертикальному скроллу перехватить горизонтальный жест
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+
+    let startX = 0
+    let startY = 0
+    let locked = null
+
+    const onStart = (e) => {
+      const t = e.touches?.[0]
+      if (!t) return
+      startX = t.clientX
+      startY = t.clientY
+      locked = null
+    }
+
+    const onMove = (e) => {
+      const t = e.touches?.[0]
+      if (!t) return
+      const dx = t.clientX - startX
+      const dy = t.clientY - startY
+      if (locked == null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        locked = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y'
+      }
+      if (locked === 'x' && e.cancelable) e.preventDefault()
+    }
+
+    track.addEventListener('touchstart', onStart, { passive: true })
+    track.addEventListener('touchmove', onMove, { passive: false })
+    return () => {
+      track.removeEventListener('touchstart', onStart)
+      track.removeEventListener('touchmove', onMove)
+    }
+  }, [cardsKey])
 
   if (list.length === 0) {
     return <p className="muted">Нет карточек.</p>

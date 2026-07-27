@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AccountMenu from './AccountMenu'
 import CardItem from './CardItem'
-import InfoSectionBody from './InfoSectionBody'
-import RegulationsSwipe from './RegulationsSwipe'
+import InfoCardsCarousel from './InfoCardsCarousel'
 import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
 import ServerLinkDot from './ServerLinkDot'
@@ -263,21 +262,18 @@ function ListView({
       {activeSection === 'writeoffs' && writeoffs ? <WriteoffsView {...writeoffs} /> : null}
 
       {infoBlock ? (
-        <section className={`info-page${activeSection === 'regulations' ? ' info-page-reg' : ''}`}>
+        <section className="info-page info-page-carousel">
           <div className="info-head">
             <h3>{infoBlock.title}</h3>
             <button type="button" className="ghost-btn" onClick={() => onSectionEdit(activeSection)}>
               Редактировать
             </button>
           </div>
-          {activeSection === 'regulations' ? (
-            <RegulationsSwipe points={infoBlock.points} />
-          ) : (
-            <InfoSectionBody sectionId={activeSection} points={infoBlock.points} />
-          )}
-          <p className="muted">
-            Подсказка: вернитесь в раздел <strong>Карточки</strong>, чтобы открыть карточки напитков.
-          </p>
+          <InfoCardsCarousel
+            sectionId={activeSection}
+            title={infoBlock.title}
+            points={infoBlock.points}
+          />
         </section>
       ) : activeSection === 'schedule' || activeSection === 'writeoffs' ? null : (
         <>
