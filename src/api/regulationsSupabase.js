@@ -10,7 +10,7 @@ export const REGULATION_CATEGORIES = [
   { id: 'requirements', label: 'Требования', legacySectionId: 'appearance' },
   { id: 'behavior', label: 'Поведение', legacySectionId: 'behavior' },
   { id: 'rights_and_duties', label: 'Права и обязанности', legacySectionId: 'rights' },
-  { id: 'equipment_instructions', label: 'Инструкции по оборудованию', legacySectionId: null },
+  { id: 'equipment_instructions', label: 'Инструкции по оборудованию', legacySectionId: null, isEquipment: true },
 ]
 
 /** UI section id → supabase category */
@@ -161,14 +161,6 @@ export function buildSeedRowsFromLegacySections(sectionContent) {
       })
     })
   }
-  // Пустой раздел инструкций — одна заготовка
-  rows.push({
-    category: 'equipment_instructions',
-    title: 'Инструкции по оборудованию',
-    content: 'Раздел готов к заполнению. Добавьте первую инструкцию через «Редактировать».',
-    orderIndex: 0,
-    images: [],
-  })
   return rows
 }
 

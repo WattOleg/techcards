@@ -6,6 +6,7 @@ import PinModal from './components/PinModal'
 import AuthGate from './components/AuthGate'
 import RegulationCardEditor from './components/RegulationCardEditor'
 import ChecklistItemEditor from './components/ChecklistItemEditor'
+import EquipmentCardEditor from './components/EquipmentCardEditor'
 import { useCards } from './hooks/useCards'
 import { useAuth } from './hooks/useAuth'
 import {
@@ -42,6 +43,11 @@ import {
   upsertChecklistItem,
   deleteChecklistItem,
 } from './api/checklistsSupabase.js'
+import {
+  migrateEquipmentFromRegulationsIfEmpty,
+  upsertEquipmentCard,
+  deleteEquipmentCard,
+} from './api/equipmentSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
@@ -196,6 +202,12 @@ function App() {
   const [checklistEditor, setChecklistEditor] = useState({ open: false, item: null })
   const [checklistSaving, setChecklistSaving] = useState(false)
   const [checklistSaveError, setChecklistSaveError] = useState('')
+  const [equipmentRows, setEquipmentRows] = useState([])
+  const [equipmentLoading, setEquipmentLoading] = useState(false)
+  const [equipmentError, setEquipmentError] = useState('')
+  const [equipmentEditor, setEquipmentEditor] = useState({ open: false, card: null })
+  const [equipmentSaving, setEquipmentSaving] = useState(false)
+  const [equipmentSaveError, setEquipmentSaveError] = useState('')
   const cachedSchedule = peekCachedSchedule()
   const [scheduleData, setScheduleData] = useState(() =>
     cachedSchedule ? normalizeScheduleServer(cachedSchedule) : DEFAULT_SCHEDULE,
@@ -346,6 +358,32 @@ function App() {
   }, [])
 
   const checklistsByType = useMemo(() => groupChecklistsByType(checklistRows), [checklistRows])
+
+  // Оборудование: список → деталь
+  useEffect(() => {
+    let active = true
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (!isSupabaseConfigured) return
+        try {
+          if (active) {
+            setEquipmentLoading(true)
+            setEquipmentError('')
+          }
+          const rows = await migrateEquipmentFromRegulationsIfEmpty()
+          if (active) setEquipmentRows(rows)
+        } catch (err) {
+          if (active) setEquipmentError(err.message || 'Не удалось загрузить оборудование')
+        } finally {
+          if (active) setEquipmentLoading(false)
+        }
+      })()
+    }, 280)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [])
 
   const loadScheduleFromNetwork = useCallback(async ({ showSpinner = true } = {}) => {
     try {
@@ -615,6 +653,24 @@ function App() {
     })
   }
 
+  const requestEquipmentEdit = (card) => {
+    setPinModal({ open: true, action: 'editEquipmentCard', card })
+  }
+
+  const requestEquipmentAdd = () => {
+    setPinModal({
+      open: true,
+      action: 'addEquipmentCard',
+      card: {
+        name: '',
+        nameRu: '',
+        photoUrl: '',
+        instructions: '',
+        orderIndex: equipmentRows.length,
+      },
+    })
+  }
+
   const requestScheduleUnlock = () => {
     setPinModal({ open: true, action: 'scheduleUnlock' })
   }
@@ -640,6 +696,12 @@ function App() {
     if (pinModal.action === 'editChecklistItem' || pinModal.action === 'addChecklistItem') {
       setChecklistEditor({ open: true, item: pinModal.item || null })
       setChecklistSaveError('')
+      closePinModal()
+      return
+    }
+    if (pinModal.action === 'editEquipmentCard' || pinModal.action === 'addEquipmentCard') {
+      setEquipmentEditor({ open: true, card: pinModal.card || null })
+      setEquipmentSaveError('')
       closePinModal()
       return
     }
@@ -754,6 +816,42 @@ function App() {
       setChecklistSaveError(err.message || 'Не удалось удалить пункт')
     } finally {
       setChecklistSaving(false)
+    }
+  }
+
+  const saveEquipmentCard = async (nextCard) => {
+    try {
+      setEquipmentSaving(true)
+      setEquipmentSaveError('')
+      const saved = await upsertEquipmentCard(nextCard, import.meta.env.VITE_PIN_CODE || '1234')
+      setEquipmentRows((prev) => {
+        const without = prev.filter((r) => r.id !== saved.id)
+        return [...without, saved].sort((a, b) => {
+          if (a.orderIndex !== b.orderIndex) return a.orderIndex - b.orderIndex
+          return String(a.name).localeCompare(String(b.name), 'ru')
+        })
+      })
+      setEquipmentEditor({ open: false, card: null })
+    } catch (err) {
+      setEquipmentSaveError(err.message || 'Не удалось сохранить оборудование')
+    } finally {
+      setEquipmentSaving(false)
+    }
+  }
+
+  const deleteEquipmentCardFromEditor = async () => {
+    const id = equipmentEditor.card?.id
+    if (!id) return
+    try {
+      setEquipmentSaving(true)
+      setEquipmentSaveError('')
+      await deleteEquipmentCard(id, import.meta.env.VITE_PIN_CODE || '1234')
+      setEquipmentRows((prev) => prev.filter((r) => r.id !== id))
+      setEquipmentEditor({ open: false, card: null })
+    } catch (err) {
+      setEquipmentSaveError(err.message || 'Не удалось удалить карточку')
+    } finally {
+      setEquipmentSaving(false)
     }
   }
 
@@ -937,6 +1035,13 @@ function App() {
               error: regulationsError,
               onEditCard: requestRegulationCardEdit,
               onAddCard: requestRegulationCardAdd,
+              equipment: {
+                items: equipmentRows,
+                loading: equipmentLoading,
+                error: equipmentError,
+                onEditCard: requestEquipmentEdit,
+                onAddCard: requestEquipmentAdd,
+              },
             }}
             checklists={{
               byType: checklistsByType,
@@ -1041,7 +1146,11 @@ function App() {
                       ? 'Новый пункт чек-листа'
                       : pinModal.action === 'editChecklistItem'
                         ? 'Редактировать пункт'
-                        : 'Редактировать'
+                        : pinModal.action === 'addEquipmentCard'
+                          ? 'Новое оборудование'
+                          : pinModal.action === 'editEquipmentCard'
+                            ? 'Редактировать оборудование'
+                            : 'Редактировать'
         }
         onClose={closePinModal}
         onSuccess={onPinSuccess}
@@ -1065,6 +1174,16 @@ function App() {
         onClose={() => setChecklistEditor({ open: false, item: null })}
         onSave={saveChecklistItem}
         onDelete={checklistEditor.item?.id ? deleteChecklistItemFromEditor : undefined}
+      />
+
+      <EquipmentCardEditor
+        open={equipmentEditor.open}
+        card={equipmentEditor.card}
+        saving={equipmentSaving}
+        error={equipmentSaveError}
+        onClose={() => setEquipmentEditor({ open: false, card: null })}
+        onSave={saveEquipmentCard}
+        onDelete={equipmentEditor.card?.id ? deleteEquipmentCardFromEditor : undefined}
       />
     </div>
   )

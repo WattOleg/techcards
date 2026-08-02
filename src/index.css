@@ -396,10 +396,51 @@ button,
   margin-top: 0;
 }
 
-.checklist-view {
+.equipment-list {
   display: grid;
-  gap: 14px;
-  margin-top: 12px;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.equipment-list-hint {
+  margin: 0;
+  padding: 0 2px;
+}
+
+.equipment-detail {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.equipment-detail-hero {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--surface2);
+  min-height: 220px;
+}
+
+.equipment-detail-hero img {
+  width: 100%;
+  height: 240px;
+  object-fit: cover;
+  display: block;
+}
+
+.equipment-detail-placeholder {
+  height: 220px;
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+}
+
+.equipment-detail-top {
+  position: absolute;
+  inset: 12px 12px auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .checklist-head {

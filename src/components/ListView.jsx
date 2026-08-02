@@ -209,8 +209,13 @@ function ListView({
   const showHeaderAdd = isRegulations || isChecklist
 
   const onHeaderAdd = () => {
-    if (isRegulations) regulations?.onAddCard?.(activeCategory)
-    else if (isChecklist) checklists?.onAddItem?.(checklistType)
+    if (isRegulations) {
+      if (activeCategory === 'equipment_instructions') {
+        regulations?.equipment?.onAddCard?.()
+      } else {
+        regulations?.onAddCard?.(activeCategory)
+      }
+    } else if (isChecklist) checklists?.onAddItem?.(checklistType)
   }
 
   return (
@@ -294,6 +299,7 @@ function ListView({
           onEditCard={regulations.onEditCard}
           loading={regulations.loading}
           error={regulations.error}
+          equipment={regulations.equipment}
         />
       ) : null}
 
