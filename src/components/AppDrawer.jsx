@@ -1,10 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
-
-const DRAWER_ITEMS = [
-  { id: 'regulations', label: 'Регламенты' },
-  { id: 'checklist-opening', label: 'Чек-лист открытия смены' },
-  { id: 'checklist-closing', label: 'Чек-лист закрытия смены' },
-]
+import { DRAWER_ITEMS } from '../constants/drawerNav.js'
+import { searchMenuContent } from '../api/menuSearchSupabase.js'
 
 function HamburgerIcon() {
   return (
@@ -30,14 +26,20 @@ function HamburgerIcon() {
 export default function AppDrawer({
   activeSection,
   onNavigate,
+  onSearchNavigate,
   authUser,
   authEmail,
   authRequired,
   onSignOut,
 }) {
   const [open, setOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState('')
   const panelRef = useRef(null)
   const titleId = useId()
+  const searchTimerRef = useRef(null)
 
   useEffect(() => {
     if (!open) return undefined
@@ -53,10 +55,59 @@ export default function AppDrawer({
     }
   }, [open])
 
+  useEffect(() => {
+    if (!open) {
+      setSearchQuery('')
+      setSearchResults([])
+      setSearchError('')
+      setSearchLoading(false)
+      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const q = searchQuery.trim()
+    if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current)
+    if (q.length < 2) {
+      setSearchResults([])
+      setSearchError('')
+      setSearchLoading(false)
+      return undefined
+    }
+    setSearchLoading(true)
+    searchTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const rows = await searchMenuContent(q)
+          setSearchResults(rows)
+          setSearchError('')
+        } catch (err) {
+          setSearchResults([])
+          setSearchError(err.message || 'Ошибка поиска')
+        } finally {
+          setSearchLoading(false)
+        }
+      })()
+    }, 280)
+    return () => {
+      if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current)
+    }
+  }, [searchQuery, open])
+
   const close = () => setOpen(false)
 
   const go = (id) => {
     onNavigate?.(id)
+    close()
+  }
+
+  const goResult = (item) => {
+    if (onSearchNavigate) {
+      onSearchNavigate(item)
+    } else {
+      onNavigate?.(item.sectionId)
+    }
     close()
   }
 
@@ -103,6 +154,42 @@ export default function AppDrawer({
               </button>
             </div>
 
+            <div className="app-drawer-search">
+              <input
+                type="search"
+                className="app-drawer-search-input"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Поиск по разделам…"
+                aria-label="Поиск по разделам и регламентам"
+                autoComplete="off"
+              />
+              {searchQuery.trim().length >= 2 ? (
+                <div className="app-drawer-search-results" role="listbox" aria-label="Результаты поиска">
+                  {searchLoading ? <p className="muted small">Ищу…</p> : null}
+                  {searchError ? <p className="error">{searchError}</p> : null}
+                  {!searchLoading && !searchError && searchResults.length === 0 ? (
+                    <p className="muted small">Ничего не найдено</p>
+                  ) : null}
+                  {searchResults.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="app-drawer-search-hit"
+                      role="option"
+                      onClick={() => goResult(item)}
+                    >
+                      <span className="app-drawer-search-hit-title">{item.title}</span>
+                      <span className="app-drawer-search-hit-sub muted small">{item.subtitle}</span>
+                      {item.snippet ? (
+                        <span className="app-drawer-search-hit-snip muted small">{item.snippet}</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
             <nav className="app-drawer-nav" aria-label="Разделы приложения">
               {DRAWER_ITEMS.map((item) => {
                 const isActive = item.id === 'regulations' ? regActive : activeSection === item.id
@@ -143,4 +230,4 @@ export default function AppDrawer({
   )
 }
 
-export { DRAWER_ITEMS }
+export { DRAWER_ITEMS } from '../constants/drawerNav.js'

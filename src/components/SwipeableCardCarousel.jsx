@@ -10,6 +10,7 @@ export default function SwipeableCardCarousel({
   className = '',
   'aria-label': ariaLabel = 'Карточки',
   onEditCard,
+  initialCardId,
 }) {
   const trackRef = useRef(null)
   const slideRefs = useRef([])
@@ -26,11 +27,17 @@ export default function SwipeableCardCarousel({
   }, [])
 
   useEffect(() => {
-    setActiveIndex(0)
-    const track = trackRef.current
-    if (track) track.scrollTo({ left: 0 })
+    const focusIdx = initialCardId
+      ? list.findIndex((c) => String(c?.id) === String(initialCardId))
+      : -1
+    const startIdx = focusIdx >= 0 ? focusIdx : 0
+    setActiveIndex(startIdx)
     slideRefs.current = slideRefs.current.slice(0, list.length)
-  }, [cardsKey, list.length])
+    const timer = window.setTimeout(() => {
+      scrollToIndex(startIdx, 'auto')
+    }, 40)
+    return () => window.clearTimeout(timer)
+  }, [cardsKey, list, initialCardId, scrollToIndex])
 
   useEffect(() => {
     const track = trackRef.current

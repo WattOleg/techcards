@@ -23,14 +23,31 @@ export default function RegulationsHub({
   loading,
   error,
   equipment,
+  focusTarget,
+  onFocusConsumed,
 }) {
   const categories = REGULATION_CATEGORIES
   const isEquipment = activeCategory === 'equipment_instructions'
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(null)
+  const [focusCardId, setFocusCardId] = useState(null)
 
   useEffect(() => {
     setSelectedEquipmentId(null)
+    setFocusCardId(null)
   }, [activeCategory])
+
+  useEffect(() => {
+    if (!focusTarget?.focusId) return
+    if (focusTarget.kind === 'equipment') {
+      setSelectedEquipmentId(focusTarget.focusId)
+      onFocusConsumed?.()
+      return
+    }
+    if (focusTarget.kind === 'regulation') {
+      setFocusCardId(focusTarget.focusId)
+      onFocusConsumed?.()
+    }
+  }, [focusTarget, onFocusConsumed])
 
   const rows = cardsByCategory?.[activeCategory] || []
   const equipmentItems = equipment?.items || []
@@ -95,10 +112,11 @@ export default function RegulationsHub({
 
           {!loading && carouselCards.length > 0 ? (
             <SwipeableCardCarousel
-              key={activeCategory}
+              key={`${activeCategory}:${focusCardId || 'default'}`}
               cards={carouselCards}
               aria-label={categories.find((c) => c.id === activeCategory)?.label || 'Регламенты'}
               onEditCard={(card) => onEditCard?.(card._raw || card)}
+              initialCardId={focusCardId}
             />
           ) : null}
         </>

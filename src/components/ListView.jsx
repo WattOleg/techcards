@@ -61,6 +61,17 @@ function ListView({
   const [stopItemName, setStopItemName] = useState('')
   const [stopItemDate, setStopItemDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [showScrollTop, setShowScrollTop] = useState(false)
+  const [menuFocus, setMenuFocus] = useState(null)
+
+  const handleSearchNavigate = (item) => {
+    if (!item?.sectionId) return
+    onSectionChange(item.sectionId)
+    if (item.focusId && (item.kind === 'regulation' || item.kind === 'equipment')) {
+      setMenuFocus({ kind: item.kind, focusId: item.focusId })
+    } else {
+      setMenuFocus(null)
+    }
+  }
 
   useEffect(() => {
     const screenEl = rootRef.current?.closest('.screen')
@@ -232,6 +243,7 @@ function ListView({
               <AppDrawer
                 activeSection={activeSection}
                 onNavigate={onSectionChange}
+                onSearchNavigate={handleSearchNavigate}
                 authUser={authUser}
                 authEmail={authEmail}
                 authRequired={authRequired}
@@ -305,6 +317,8 @@ function ListView({
           loading={regulations.loading}
           error={regulations.error}
           equipment={regulations.equipment}
+          focusTarget={menuFocus}
+          onFocusConsumed={() => setMenuFocus(null)}
         />
       ) : null}
 
