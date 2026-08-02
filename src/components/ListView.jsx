@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import AccountMenu from './AccountMenu'
+import AppDrawer from './AppDrawer'
 import CardItem from './CardItem'
 import InfoCardsCarousel from './InfoCardsCarousel'
 import SearchBar from './SearchBar'
@@ -8,6 +8,22 @@ import ServerLinkDot from './ServerLinkDot'
 import WriteoffsView from './WriteoffsView'
 
 const INFO_SECTION_IDS = ['regulations', 'appearance', 'behavior', 'rights']
+const DRAWER_PLACEHOLDER_IDS = ['checklist-opening', 'checklist-closing', 'menu-search']
+
+const DRAWER_PLACEHOLDER_COPY = {
+  'checklist-opening': {
+    title: 'Чек-лист открытия смены',
+    text: 'Раздел зарезервирован. Наполнение появится в следующем обновлении.',
+  },
+  'checklist-closing': {
+    title: 'Чек-лист закрытия смены',
+    text: 'Раздел зарезервирован. Наполнение появится в следующем обновлении.',
+  },
+  'menu-search': {
+    title: 'Поиск',
+    text: 'Поиск по разделам и регламентам появится в следующем обновлении. Поиск по техкартам — во вкладке «Карточки».',
+  },
+}
 
 function ListView({
   cards,
@@ -174,15 +190,23 @@ function ListView({
     }
   }
 
-  const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label || 'Карточки'
+  const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label
+    || DRAWER_PLACEHOLDER_COPY[activeSection]?.title
+    || 'Карточки'
   const activeMainSection =
     activeSection === 'techcards' || activeSection === 'schedule' || activeSection === 'writeoffs'
       ? activeSection
-      : 'regulations'
+      : DRAWER_PLACEHOLDER_IDS.includes(activeSection)
+        ? null
+        : 'regulations'
   const infoBlock =
-    activeSection !== 'techcards' && activeSection !== 'schedule' && activeSection !== 'writeoffs'
+    activeSection !== 'techcards' &&
+    activeSection !== 'schedule' &&
+    activeSection !== 'writeoffs' &&
+    !DRAWER_PLACEHOLDER_IDS.includes(activeSection)
       ? sectionContent[activeSection]
       : null
+  const drawerPlaceholder = DRAWER_PLACEHOLDER_COPY[activeSection] || null
 
   return (
     <div className="view list-view" ref={rootRef}>
@@ -190,9 +214,11 @@ function ListView({
         <header className="list-header">
           <div className="title-menu-wrap">
             <div className="title-menu-btn">
-              <AccountMenu
-                user={authUser}
-                email={authEmail}
+              <AppDrawer
+                activeSection={activeSection}
+                onNavigate={onSectionChange}
+                authUser={authUser}
+                authEmail={authEmail}
                 authRequired={authRequired}
                 onSignOut={onSignOut}
               />
@@ -261,6 +287,13 @@ function ListView({
       {activeSection === 'schedule' && schedule ? <ScheduleView {...schedule} /> : null}
       {activeSection === 'writeoffs' && writeoffs ? <WriteoffsView {...writeoffs} /> : null}
 
+      {drawerPlaceholder ? (
+        <section className="info-page drawer-placeholder">
+          <h3>{drawerPlaceholder.title}</h3>
+          <p className="muted">{drawerPlaceholder.text}</p>
+        </section>
+      ) : null}
+
       {infoBlock ? (
         <section className="info-page info-page-carousel">
           <div className="info-head">
@@ -275,7 +308,9 @@ function ListView({
             points={infoBlock.points}
           />
         </section>
-      ) : activeSection === 'schedule' || activeSection === 'writeoffs' ? null : (
+      ) : activeSection === 'schedule' ||
+        activeSection === 'writeoffs' ||
+        drawerPlaceholder ? null : (
         <>
           <div className="toolbar-row">
             <button
