@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 function formatRuDate(iso) {
   if (!iso) return ''
@@ -14,32 +14,196 @@ function formatRuDate(iso) {
   }
 }
 
-function PostCard({ post, onEdit }) {
+function formatShortDate(iso) {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+  } catch {
+    return ''
+  }
+}
+
+function initialLetter(title) {
+  const t = String(title || '').trim()
+  return t ? t[0].toUpperCase() : '•'
+}
+
+function kindTone(kind) {
+  if (kind === 'equipment') return 'tone-equip'
+  if (kind === 'checklist') return 'tone-check'
+  if (kind === 'news') return 'tone-news'
+  if (kind === 'current') return 'tone-current'
+  return 'tone-reg'
+}
+
+/**
+ * Instagram-like viewer.
+ */
+function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
+  const [index, setIndex] = useState(startIndex)
+  const [progress, setProgress] = useState(0)
+  const timerRef = useRef(null)
+  const touchX = useRef(null)
+  const item = items[index]
+  const durationMs = 4500
+
+  useEffect(() => {
+    setIndex(Math.max(0, Math.min(startIndex, items.length - 1)))
+  }, [startIndex, items.length])
+
+  useEffect(() => {
+    setProgress(0)
+    if (!item) return undefined
+    const started = performance.now()
+    const tick = (now) => {
+      const p = Math.min(1, (now - started) / durationMs)
+      setProgress(p)
+      if (p >= 1) {
+        if (index < items.length - 1) setIndex((i) => i + 1)
+        else onClose?.()
+        return
+      }
+      timerRef.current = requestAnimationFrame(tick)
+    }
+    timerRef.current = requestAnimationFrame(tick)
+    return () => {
+      if (timerRef.current) cancelAnimationFrame(timerRef.current)
+    }
+  }, [index, item, items.length, onClose])
+
+  if (!item) return null
+
+  const goPrev = () => {
+    if (index <= 0) onClose?.()
+    else setIndex((i) => i - 1)
+  }
+  const goNext = () => {
+    if (index >= items.length - 1) onClose?.()
+    else setIndex((i) => i + 1)
+  }
+
+  const imageUrl = item.imageUrl || item.imageUrls?.[0] || null
+
   return (
-    <article className="updates-post">
-      <div className="updates-post-head">
-        <h4>{post.title}</h4>
-        {onEdit ? (
-          <button type="button" className="ghost-btn btn-compact" onClick={() => onEdit(post)}>
-            Изменить
+    <div
+      className="stories-viewer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Сторис"
+      onTouchStart={(e) => {
+        touchX.current = e.touches[0]?.clientX ?? null
+      }}
+      onTouchEnd={(e) => {
+        const start = touchX.current
+        touchX.current = null
+        if (start == null) return
+        const dx = (e.changedTouches[0]?.clientX ?? start) - start
+        if (Math.abs(dx) < 48) return
+        if (dx > 0) goPrev()
+        else goNext()
+      }}
+    >
+      <div className="stories-viewer-bars">
+        {items.map((it, i) => (
+          <div key={it.id} className="stories-viewer-bar">
+            <div
+              className="stories-viewer-bar-fill"
+              style={{
+                width: i < index ? '100%' : i === index ? `${progress * 100}%` : '0%',
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="stories-viewer-top">
+        <div className="stories-viewer-meta">
+          <span className="stories-viewer-label">{item.label || item.subtitle || ''}</span>
+          <strong>{item.title}</strong>
+          <span className="stories-viewer-date">{formatRuDate(item.updatedAt || item.createdAt)}</span>
+        </div>
+        <div className="stories-viewer-actions">
+          {onEdit && item.rawPost ? (
+            <button
+              type="button"
+              className="stories-viewer-edit"
+              onClick={() => {
+                onClose?.()
+                onEdit(item.rawPost)
+              }}
+            >
+              Изменить
+            </button>
+          ) : null}
+          <button type="button" className="stories-viewer-close" onClick={onClose} aria-label="Закрыть">
+            ✕
           </button>
+        </div>
+      </div>
+
+      <div className="stories-viewer-body">
+        {imageUrl ? (
+          <img src={imageUrl} alt="" referrerPolicy="no-referrer" />
+        ) : (
+          <div className={`stories-viewer-fallback ${kindTone(item.kind)}`}>
+            <span>{initialLetter(item.title)}</span>
+          </div>
+        )}
+        {item.content || item.snippet ? (
+          <p className="stories-viewer-text">{item.content || item.snippet}</p>
         ) : null}
       </div>
-      {post.content ? <p className="updates-post-body">{post.content}</p> : null}
-      {post.imageUrls?.length ? (
-        <div className="updates-post-photos">
-          {post.imageUrls.map((url) => (
-            <img key={url} src={url} alt="" loading="lazy" referrerPolicy="no-referrer" />
-          ))}
+
+      <button type="button" className="stories-viewer-hit left" aria-label="Назад" onClick={goPrev} />
+      <button type="button" className="stories-viewer-hit right" aria-label="Далее" onClick={goNext} />
+    </div>
+  )
+}
+
+function StoriesRail({ title, hint, items, emptyText, onOpen, action }) {
+  return (
+    <section className="updates-block updates-stories-block">
+      <div className="updates-block-head">
+        <div>
+          <h3>{title}</h3>
+          {hint ? <p className="muted small updates-block-hint">{hint}</p> : null}
         </div>
-      ) : null}
-      <p className="muted small">{formatRuDate(post.updatedAt || post.createdAt)}</p>
-    </article>
+        {action || null}
+      </div>
+      {items.length === 0 ? (
+        <p className="muted">{emptyText}</p>
+      ) : (
+        <div className="stories-rail" role="list">
+          {items.map((item, index) => {
+            const img = item.imageUrl || item.imageUrls?.[0]
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className="stories-bubble"
+                role="listitem"
+                onClick={() => onOpen(index)}
+              >
+                <span className={`stories-ring ${kindTone(item.kind)}`}>
+                  {img ? (
+                    <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  ) : (
+                    <span className="stories-avatar-letter">{initialLetter(item.title)}</span>
+                  )}
+                </span>
+                <span className="stories-bubble-title">{item.title}</span>
+                <span className="stories-bubble-date">{formatShortDate(item.updatedAt || item.createdAt)}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
 /**
- * Экран «Актуальное»: изменения / новости / актуальное / комментарии смены.
+ * Экран «Актуальное»: сторис изменений / новости / актуальное / комментарии смены.
  */
 export default function UpdatesView({
   recentChanges = [],
@@ -60,10 +224,52 @@ export default function UpdatesView({
   const [authorName, setAuthorName] = useState('')
   const [commentText, setCommentText] = useState('')
   const [localError, setLocalError] = useState('')
+  const [viewer, setViewer] = useState(null)
 
   useEffect(() => {
     setLocalError('')
   }, [error])
+
+  const changeStories = useMemo(
+    () =>
+      recentChanges.map((item) => ({
+        ...item,
+        subtitle: item.label,
+      })),
+    [recentChanges],
+  )
+
+  const newsStories = useMemo(
+    () =>
+      news.map((post) => ({
+        id: post.id,
+        kind: 'news',
+        title: post.title,
+        content: post.content,
+        imageUrls: post.imageUrls,
+        updatedAt: post.updatedAt,
+        createdAt: post.createdAt,
+        label: 'Новости',
+        rawPost: post,
+      })),
+    [news],
+  )
+
+  const currentStories = useMemo(
+    () =>
+      current.map((post) => ({
+        id: post.id,
+        kind: 'current',
+        title: post.title,
+        content: post.content,
+        imageUrls: post.imageUrls,
+        updatedAt: post.updatedAt,
+        createdAt: post.createdAt,
+        label: 'Актуальное',
+        rawPost: post,
+      })),
+    [current],
+  )
 
   const submitComment = async (e) => {
     e.preventDefault()
@@ -85,53 +291,43 @@ export default function UpdatesView({
       </div>
       {error ? <p className="error">{error}</p> : null}
 
-      <section className="updates-block">
-        <h3>Изменения за 7 дней</h3>
-        <p className="muted small">Автоматически: регламенты, оборудование, чек-листы</p>
-        {recentChanges.length === 0 ? (
-          <p className="muted">За последние 7 дней изменений нет.</p>
-        ) : (
-          <ul className="updates-changes">
-            {recentChanges.map((item) => (
-              <li key={item.id}>
-                <span className="updates-change-label">{item.label}</span>
-                <strong>{item.title}</strong>
-                <span className="muted small">{formatRuDate(item.updatedAt)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <StoriesRail
+        title="Изменения"
+        hint="За 7 дней · листайте вправо"
+        items={changeStories}
+        emptyText="За последние 7 дней изменений нет."
+        onOpen={(index) => setViewer({ items: changeStories, startIndex: index, onEdit: null })}
+      />
 
-      <section className="updates-block">
-        <div className="updates-block-head">
-          <h3>Новости</h3>
+      <StoriesRail
+        title="Новости"
+        hint="Нажмите на кружок — откроется сторис"
+        items={newsStories}
+        emptyText="Пока нет новостей."
+        onOpen={(index) =>
+          setViewer({ items: newsStories, startIndex: index, onEdit: onRequestEditNews })
+        }
+        action={
           <button type="button" className="btn btn-dark btn-compact" onClick={onRequestAddNews}>
             + Новость
           </button>
-        </div>
-        {news.length === 0 ? <p className="muted">Пока нет новостей.</p> : null}
-        <div className="updates-posts">
-          {news.map((post) => (
-            <PostCard key={post.id} post={post} onEdit={onRequestEditNews} />
-          ))}
-        </div>
-      </section>
+        }
+      />
 
-      <section className="updates-block">
-        <div className="updates-block-head">
-          <h3>Актуальное</h3>
+      <StoriesRail
+        title="Актуальное"
+        hint="Свежие слева, старые правее"
+        items={currentStories}
+        emptyText="Пока пусто."
+        onOpen={(index) =>
+          setViewer({ items: currentStories, startIndex: index, onEdit: onRequestEditCurrent })
+        }
+        action={
           <button type="button" className="btn btn-dark btn-compact" onClick={onRequestAddCurrent}>
             + Запись
           </button>
-        </div>
-        {current.length === 0 ? <p className="muted">Пока пусто.</p> : null}
-        <div className="updates-posts">
-          {current.map((post) => (
-            <PostCard key={post.id} post={post} onEdit={onRequestEditCurrent} />
-          ))}
-        </div>
-      </section>
+        }
+      />
 
       <section className="updates-block">
         <h3>Комментарии к смене</h3>
@@ -177,6 +373,15 @@ export default function UpdatesView({
           ))}
         </ul>
       </section>
+
+      {viewer ? (
+        <StoriesViewer
+          items={viewer.items}
+          startIndex={viewer.startIndex}
+          onClose={() => setViewer(null)}
+          onEdit={viewer.onEdit}
+        />
+      ) : null}
     </div>
   )
 }
