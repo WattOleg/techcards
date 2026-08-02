@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 function formatRuDate(iso) {
   if (!iso) return ''
@@ -33,11 +34,12 @@ function kindTone(kind) {
   if (kind === 'checklist') return 'tone-check'
   if (kind === 'news') return 'tone-news'
   if (kind === 'current') return 'tone-current'
+  if (kind === 'techcard') return 'tone-tech'
   return 'tone-reg'
 }
 
 /**
- * Instagram-like viewer.
+ * Instagram-like viewer (портал на body — поверх шапки и таббара).
  */
 function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
   const [index, setIndex] = useState(startIndex)
@@ -51,6 +53,16 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
   useEffect(() => {
     setIndex(Math.max(0, Math.min(startIndex, items.length - 1)))
   }, [startIndex, items.length])
+
+  useEffect(() => {
+    document.body.classList.add('stories-open')
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.classList.remove('stories-open')
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
 
   useEffect(() => {
     setProgress(0)
@@ -84,8 +96,9 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
   }
 
   const imageUrl = item.imageUrl || item.imageUrls?.[0] || null
+  const bodyText = item.content || item.snippet || ''
 
-  return (
+  const node = (
     <div
       className="stories-viewer"
       role="dialog"
@@ -168,15 +181,22 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
             <span>{initialLetter(item.title)}</span>
           </div>
         )}
-        {item.content || item.snippet ? (
-          <p className="stories-viewer-text">{item.content || item.snippet}</p>
-        ) : null}
+        <div className="stories-viewer-caption">
+          {item.label || item.subtitle ? (
+            <p className="stories-viewer-caption-label">{item.label || item.subtitle}</p>
+          ) : null}
+          <h2 className="stories-viewer-caption-title">{item.title}</h2>
+          {bodyText ? <p className="stories-viewer-text">{bodyText}</p> : null}
+          <p className="stories-viewer-caption-date">{formatRuDate(item.updatedAt || item.createdAt)}</p>
+        </div>
       </div>
 
       <button type="button" className="stories-viewer-hit left" aria-label="Назад" onClick={goPrev} />
       <button type="button" className="stories-viewer-hit right" aria-label="Далее" onClick={goNext} />
     </div>
   )
+
+  return createPortal(node, document.body)
 }
 
 function StoriesRail({ title, hint, items, emptyText, onOpen, action }) {
@@ -314,7 +334,7 @@ export default function UpdatesView({
 
       <StoriesRail
         title="Изменения"
-        hint="За 7 дней · листайте вправо"
+        hint="За 7 дней · техкарты, регламенты, чек-листы"
         items={changeStories}
         emptyText="За последние 7 дней изменений нет."
         onOpen={(index) => setViewer({ items: changeStories, startIndex: index, onEdit: null })}

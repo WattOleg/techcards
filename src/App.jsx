@@ -60,6 +60,7 @@ import {
   deleteCurrentUpdate,
   addShiftComment,
   deleteShiftComment,
+  logTechcardChange,
 } from './api/updatesSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
@@ -805,9 +806,11 @@ function App() {
   const onSaveEdit = async (nextCard) => {
     // Берём массив из формы; пустые поля отбрасываются внутри parse/serialize.
     const photoUrls = parsePhotoUrls(nextCard.photoUrls ?? nextCard.photoUrl)
+    const todayRu = new Date().toLocaleDateString('ru-RU')
     const preparedCard = {
       ...nextCard,
       photoUrl: serializePhotoUrls(photoUrls),
+      date: todayRu,
     }
     delete preparedCard.photoUrls
     const isCreate = !selectedCard || draftCard !== null
@@ -825,6 +828,7 @@ function App() {
       await updateCard(preparedCard.sheetName, preparedCard, import.meta.env.VITE_PIN_CODE)
       updateLocalCard({ ...preparedCard, photoUrls })
     }
+    void logTechcardChange({ ...preparedCard, photoUrls })
     setEditOpen(false)
   }
 

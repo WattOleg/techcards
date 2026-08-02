@@ -3,6 +3,7 @@
  */
 import { supabase, isSupabaseConfigured } from './supabaseClient.js'
 import { reportServerReachable, reportServerUnreachable } from '../utils/serverStatus.js'
+import { parsePhotoUrls } from '../utils/photoUrl.js'
 
 function assertConfigured() {
   if (!isSupabaseConfigured) {
@@ -54,7 +55,7 @@ const CATEGORY_LABELS = {
 export async function fetchRecentChanges(days = 7) {
   assertConfigured()
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
-  const [regs, equipment, checklists] = await Promise.all([
+  const [regs, equipment, checklists, techcards] = await Promise.all([
     supabase
       .from('regulations')
       .select('id, category, title, updated_at')
@@ -70,11 +71,25 @@ export async function fetchRecentChanges(days = 7) {
       .select('id, type, item_text, updated_at')
       .gte('updated_at', since)
       .order('updated_at', { ascending: false }),
+    supabase
+      .from('techcard_changes')
+      .select('sheet_name, title, category, photo_url, updated_at')
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: false }),
   ])
 
   if (regs.error) throwSb(regs.error, 'Не удалось загрузить изменения регламентов')
   if (equipment.error) throwSb(equipment.error, 'Не удалось загрузить изменения оборудования')
   if (checklists.error) throwSb(checklists.error, 'Не удалось загрузить изменения чек-листов')
+  // Таблица могла ещё не быть создана — не валим весь фид.
+  if (techcards.error) {
+    const msg = String(techcards.error.message || '')
+    const missing =
+      techcards.error.code === '42P01' ||
+      techcards.error.code === 'PGRST205' ||
+      /techcard_changes|schema cache|does not exist/i.test(msg)
+    if (!missing) throwSb(techcards.error, 'Не удалось загрузить изменения техкарт')
+  }
   reportServerReachable()
 
   const items = []
@@ -105,9 +120,44 @@ export async function fetchRecentChanges(days = 7) {
       updatedAt: row.updated_at,
     })
   }
+  for (const row of techcards.data || []) {
+    items.push({
+      id: `tc-${row.sheet_name}`,
+      kind: 'techcard',
+      label: row.category ? `Техкарта · ${row.category}` : 'Техкарта',
+      title: row.title || row.sheet_name || 'Без названия',
+      imageUrl: row.photo_url || '',
+      updatedAt: row.updated_at,
+      sheetName: row.sheet_name,
+    })
+  }
 
   items.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
   return items
+}
+
+/** Фиксирует правку техкарты (фото, граммовка и т.д.) для блока «Изменения». */
+export async function logTechcardChange(card) {
+  if (!isSupabaseConfigured || !card?.sheetName) return null
+  const photos = parsePhotoUrls(card.photoUrls ?? card.photoUrl)
+  const payload = {
+    sheet_name: String(card.sheetName).trim(),
+    title: String(card.name || card.nameRu || card.sheetName || '').trim() || 'Техкарта',
+    category: String(card.category || '').trim(),
+    photo_url: photos[0] || '',
+    updated_at: new Date().toISOString(),
+  }
+  const { data, error } = await supabase
+    .from('techcard_changes')
+    .upsert(payload, { onConflict: 'sheet_name' })
+    .select('*')
+    .single()
+  if (error) {
+    console.warn('TECHCARD CHANGE LOG:', error.message)
+    return null
+  }
+  reportServerReachable()
+  return data
 }
 
 async function fetchPosts(table) {
