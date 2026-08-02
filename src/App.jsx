@@ -7,6 +7,7 @@ import AuthGate from './components/AuthGate'
 import RegulationCardEditor from './components/RegulationCardEditor'
 import ChecklistItemEditor from './components/ChecklistItemEditor'
 import EquipmentCardEditor from './components/EquipmentCardEditor'
+import UpdatePostEditor from './components/UpdatePostEditor'
 import { useCards } from './hooks/useCards'
 import { useAuth } from './hooks/useAuth'
 import {
@@ -48,6 +49,18 @@ import {
   upsertEquipmentCard,
   deleteEquipmentCard,
 } from './api/equipmentSupabase.js'
+import {
+  fetchRecentChanges,
+  fetchNews,
+  fetchCurrentUpdates,
+  fetchShiftComments,
+  upsertNews,
+  upsertCurrentUpdate,
+  deleteNews,
+  deleteCurrentUpdate,
+  addShiftComment,
+  deleteShiftComment,
+} from './api/updatesSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
 import { serializePhotoUrls, getCardPhotoUrls } from './utils/photoUrl'
@@ -208,6 +221,20 @@ function App() {
   const [equipmentEditor, setEquipmentEditor] = useState({ open: false, card: null })
   const [equipmentSaving, setEquipmentSaving] = useState(false)
   const [equipmentSaveError, setEquipmentSaveError] = useState('')
+  const [updatesRecent, setUpdatesRecent] = useState([])
+  const [updatesNews, setUpdatesNews] = useState([])
+  const [updatesCurrent, setUpdatesCurrent] = useState([])
+  const [shiftComments, setShiftComments] = useState([])
+  const [updatesLoading, setUpdatesLoading] = useState(false)
+  const [updatesError, setUpdatesError] = useState('')
+  const [commentSaving, setCommentSaving] = useState(false)
+  const [updatePostEditor, setUpdatePostEditor] = useState({
+    open: false,
+    kind: null,
+    post: null,
+  })
+  const [updatePostSaving, setUpdatePostSaving] = useState(false)
+  const [updatePostSaveError, setUpdatePostSaveError] = useState('')
   const cachedSchedule = peekCachedSchedule()
   const [scheduleData, setScheduleData] = useState(() =>
     cachedSchedule ? normalizeScheduleServer(cachedSchedule) : DEFAULT_SCHEDULE,
@@ -384,6 +411,36 @@ function App() {
       window.clearTimeout(timer)
     }
   }, [])
+
+  const loadUpdatesFeed = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setUpdatesError('Supabase не настроен')
+      return
+    }
+    try {
+      setUpdatesLoading(true)
+      setUpdatesError('')
+      const [recent, news, current, comments] = await Promise.all([
+        fetchRecentChanges(7),
+        fetchNews(),
+        fetchCurrentUpdates(),
+        fetchShiftComments(),
+      ])
+      setUpdatesRecent(recent)
+      setUpdatesNews(news)
+      setUpdatesCurrent(current)
+      setShiftComments(comments)
+    } catch (err) {
+      setUpdatesError(err.message || 'Не удалось загрузить Актуальное')
+    } finally {
+      setUpdatesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeSection !== 'updates') return
+    void loadUpdatesFeed()
+  }, [activeSection, loadUpdatesFeed])
 
   const loadScheduleFromNetwork = useCallback(async ({ showSpinner = true } = {}) => {
     try {
@@ -671,6 +728,14 @@ function App() {
     })
   }
 
+  const requestUpdatePostAdd = (kind) => {
+    setPinModal({ open: true, action: 'addUpdatePost', kind, post: { title: '', content: '', imageUrls: [] } })
+  }
+
+  const requestUpdatePostEdit = (kind, post) => {
+    setPinModal({ open: true, action: 'editUpdatePost', kind, post })
+  }
+
   const requestScheduleUnlock = () => {
     setPinModal({ open: true, action: 'scheduleUnlock' })
   }
@@ -702,6 +767,16 @@ function App() {
     if (pinModal.action === 'editEquipmentCard' || pinModal.action === 'addEquipmentCard') {
       setEquipmentEditor({ open: true, card: pinModal.card || null })
       setEquipmentSaveError('')
+      closePinModal()
+      return
+    }
+    if (pinModal.action === 'addUpdatePost' || pinModal.action === 'editUpdatePost') {
+      setUpdatePostEditor({
+        open: true,
+        kind: pinModal.kind || 'news',
+        post: pinModal.post || null,
+      })
+      setUpdatePostSaveError('')
       closePinModal()
       return
     }
@@ -859,6 +934,71 @@ function App() {
     } finally {
       setEquipmentSaving(false)
     }
+  }
+
+  const saveUpdatePost = async (nextPost) => {
+    const kind = updatePostEditor.kind
+    try {
+      setUpdatePostSaving(true)
+      setUpdatePostSaveError('')
+      const pin = import.meta.env.VITE_PIN_CODE || '1234'
+      const saved =
+        kind === 'current' ? await upsertCurrentUpdate(nextPost, pin) : await upsertNews(nextPost, pin)
+      if (kind === 'current') {
+        setUpdatesCurrent((prev) => {
+          const without = prev.filter((p) => p.id !== saved.id)
+          return [saved, ...without]
+        })
+      } else {
+        setUpdatesNews((prev) => {
+          const without = prev.filter((p) => p.id !== saved.id)
+          return [saved, ...without]
+        })
+      }
+      setUpdatePostEditor({ open: false, kind: null, post: null })
+    } catch (err) {
+      setUpdatePostSaveError(err.message || 'Не удалось сохранить')
+    } finally {
+      setUpdatePostSaving(false)
+    }
+  }
+
+  const deleteUpdatePostFromEditor = async () => {
+    const id = updatePostEditor.post?.id
+    const kind = updatePostEditor.kind
+    if (!id) return
+    try {
+      setUpdatePostSaving(true)
+      setUpdatePostSaveError('')
+      const pin = import.meta.env.VITE_PIN_CODE || '1234'
+      if (kind === 'current') {
+        await deleteCurrentUpdate(id, pin)
+        setUpdatesCurrent((prev) => prev.filter((p) => p.id !== id))
+      } else {
+        await deleteNews(id, pin)
+        setUpdatesNews((prev) => prev.filter((p) => p.id !== id))
+      }
+      setUpdatePostEditor({ open: false, kind: null, post: null })
+    } catch (err) {
+      setUpdatePostSaveError(err.message || 'Не удалось удалить')
+    } finally {
+      setUpdatePostSaving(false)
+    }
+  }
+
+  const handleAddShiftComment = async ({ authorName, commentText }) => {
+    setCommentSaving(true)
+    try {
+      const saved = await addShiftComment({ authorName, commentText })
+      setShiftComments((prev) => [saved, ...prev])
+    } finally {
+      setCommentSaving(false)
+    }
+  }
+
+  const handleDeleteShiftComment = async (id) => {
+    await deleteShiftComment(id)
+    setShiftComments((prev) => prev.filter((c) => c.id !== id))
   }
 
   const saveScheduleToSheet = async () => {
@@ -1056,6 +1196,22 @@ function App() {
               onEditItem: requestChecklistItemEdit,
               onAddItem: requestChecklistItemAdd,
             }}
+            updates={{
+              recentChanges: updatesRecent,
+              news: updatesNews,
+              current: updatesCurrent,
+              comments: shiftComments,
+              loading: updatesLoading,
+              error: updatesError,
+              onReload: loadUpdatesFeed,
+              onRequestAddNews: () => requestUpdatePostAdd('news'),
+              onRequestEditNews: (post) => requestUpdatePostEdit('news', post),
+              onRequestAddCurrent: () => requestUpdatePostAdd('current'),
+              onRequestEditCurrent: (post) => requestUpdatePostEdit('current', post),
+              onAddComment: handleAddShiftComment,
+              onDeleteComment: handleDeleteShiftComment,
+              commentSaving,
+            }}
             stopList={{
               data: stopListData,
               loading: stopListLoading,
@@ -1152,11 +1308,15 @@ function App() {
                       ? 'Новый пункт чек-листа'
                       : pinModal.action === 'editChecklistItem'
                         ? 'Редактировать пункт'
-                        : pinModal.action === 'addEquipmentCard'
+                          : pinModal.action === 'addEquipmentCard'
                           ? 'Новое оборудование'
                           : pinModal.action === 'editEquipmentCard'
                             ? 'Редактировать оборудование'
-                            : 'Редактировать'
+                            : pinModal.action === 'addUpdatePost'
+                              ? 'Новая запись'
+                              : pinModal.action === 'editUpdatePost'
+                                ? 'Редактировать запись'
+                                : 'Редактировать'
         }
         onClose={closePinModal}
         onSuccess={onPinSuccess}
@@ -1190,6 +1350,17 @@ function App() {
         onClose={() => setEquipmentEditor({ open: false, card: null })}
         onSave={saveEquipmentCard}
         onDelete={equipmentEditor.card?.id ? deleteEquipmentCardFromEditor : undefined}
+      />
+
+      <UpdatePostEditor
+        open={updatePostEditor.open}
+        kindLabel={updatePostEditor.kind === 'current' ? 'Актуальное' : 'Новости'}
+        post={updatePostEditor.post}
+        saving={updatePostSaving}
+        error={updatePostSaveError}
+        onClose={() => setUpdatePostEditor({ open: false, kind: null, post: null })}
+        onSave={saveUpdatePost}
+        onDelete={updatePostEditor.post?.id ? deleteUpdatePostFromEditor : undefined}
       />
     </div>
   )

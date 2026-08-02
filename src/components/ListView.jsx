@@ -7,6 +7,7 @@ import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
 import ServerLinkDot from './ServerLinkDot'
 import WriteoffsView from './WriteoffsView'
+import UpdatesView from './UpdatesView'
 import {
   CATEGORY_TO_SECTION,
   SECTION_TO_CATEGORY,
@@ -46,6 +47,7 @@ function ListView({
   onSignOut,
   regulations,
   checklists,
+  updates,
 }) {
   const rootRef = useRef(null)
   const [query, setQuery] = useState('')
@@ -189,7 +191,7 @@ function ListView({
     }
   }
 
-  const showHeaderTitle = MAIN_TAB_IDS.includes(activeSection)
+  const showHeaderTitle = MAIN_TAB_IDS.includes(activeSection) || activeSection === 'updates'
   const activeSectionLabel =
     activeSection === 'techcards'
       ? 'Карточки'
@@ -197,10 +199,13 @@ function ListView({
         ? 'Графики'
         : activeSection === 'writeoffs'
           ? 'Списания'
-          : ''
+          : activeSection === 'updates'
+            ? 'Актуальное'
+            : ''
   const activeMainSection = MAIN_TAB_IDS.includes(activeSection) ? activeSection : null
   const isRegulations = REGULATION_SECTION_IDS.includes(activeSection)
   const isChecklist = CHECKLIST_SECTION_IDS.includes(activeSection)
+  const isUpdates = activeSection === 'updates'
   const activeCategory = isRegulations
     ? SECTION_TO_CATEGORY[activeSection] || 'regulations'
     : 'regulations'
@@ -314,6 +319,25 @@ function ListView({
         />
       ) : null}
 
+      {isUpdates && updates ? (
+        <UpdatesView
+          recentChanges={updates.recentChanges}
+          news={updates.news}
+          current={updates.current}
+          comments={updates.comments}
+          loading={updates.loading}
+          error={updates.error}
+          onReload={updates.onReload}
+          onRequestAddNews={updates.onRequestAddNews}
+          onRequestEditNews={updates.onRequestEditNews}
+          onRequestAddCurrent={updates.onRequestAddCurrent}
+          onRequestEditCurrent={updates.onRequestEditCurrent}
+          onAddComment={updates.onAddComment}
+          onDeleteComment={updates.onDeleteComment}
+          commentSaving={updates.commentSaving}
+        />
+      ) : null}
+
       {activeSection === 'techcards' ? (
         <>
           <div className="toolbar-row">
@@ -360,6 +384,14 @@ function ListView({
                   {stopList.data.length > 99 ? '99+' : stopList.data.length}
                 </span>
               ) : null}
+            </button>
+            <button
+              type="button"
+              className="refresh-btn updates-btn"
+              onClick={() => onSectionChange('updates')}
+              aria-label="Актуальное"
+            >
+              Актуальное
             </button>
           </div>
 
