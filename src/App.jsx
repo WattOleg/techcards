@@ -34,7 +34,7 @@ import {
   deleteRegulationCard,
 } from './api/regulationsSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
-import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
+import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
 import { bindNetworkSettleListeners } from './utils/network'
 import { startServerLinkMonitor } from './hooks/useServerLink'
@@ -425,12 +425,6 @@ function App() {
     if (!selectedCard) return
     const fullCard = await ensureFullCard(selectedCard)
     await exportCardToPdf(fullCard)
-  }
-
-  const shareOneCard = async () => {
-    if (!selectedCard) return
-    const fullCard = await ensureFullCard(selectedCard)
-    await shareCardPdf(fullCard)
   }
 
   const openDetail = async (cardId) => {
@@ -895,9 +889,7 @@ function App() {
             loading={detailLoading}
             onBack={closeDetail}
             onEdit={() => requestAction('edit')}
-            onDelete={() => requestAction('delete')}
             onExport={exportOneCard}
-            onShare={shareOneCard}
           />
         </section>
       </div>
@@ -911,6 +903,14 @@ function App() {
           setDraftCard(null)
         }}
         onSave={onSaveEdit}
+        onDelete={
+          selectedCard && !draftCard
+            ? () => {
+                setEditOpen(false)
+                requestAction('delete')
+              }
+            : undefined
+        }
       />
 
       <PinModal

@@ -1524,6 +1524,11 @@ h1 {
   resize: vertical;
 }
 
+.edit-delete-btn {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .close-btn {
   position: absolute;
   right: 10px;

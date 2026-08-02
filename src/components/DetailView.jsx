@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getPhotoCandidates } from '../utils/photoUrl'
 import ServerLinkDot from './ServerLinkDot'
 
-function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare }) {
+function DetailView({ card, loading, onBack, onEdit, onExport }) {
   const photoCandidates = useMemo(() => getPhotoCandidates(card?.photoUrl), [card?.photoUrl])
   const [photoIdx, setPhotoIdx] = useState(0)
 
@@ -95,16 +95,8 @@ function DetailView({ card, loading, onBack, onEdit, onDelete, onExport, onShare
         <button type="button" className="btn btn-dark" onClick={onEdit}>
           Редактировать
         </button>
-        <div className="actions-inline">
-          <button type="button" className="btn btn-compact btn-outline-black" onClick={onExport}>
-            Экспорт PDF
-          </button>
-          <button type="button" className="btn btn-compact btn-outline-black" onClick={onShare}>
-            Отправить
-          </button>
-        </div>
-        <button type="button" className="btn btn-danger" onClick={onDelete}>
-          Удалить
+        <button type="button" className="btn btn-outline-black" onClick={onExport}>
+          Экспорт в PDF
         </button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { normalizePhotoUrl } from '../utils/photoUrl'
 
-function EditOverlay({ isOpen, card, categories, onClose, onSave }) {
+function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -146,6 +146,16 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave }) {
                 ? 'Создать → Google Sheets'
                 : 'Сохранить → Google Sheets'}
         </button>
+        {!isCreate && typeof onDelete === 'function' ? (
+          <button
+            type="button"
+            className="btn btn-danger edit-delete-btn"
+            disabled={isSubmitting}
+            onClick={() => onDelete()}
+          >
+            Удалить карточку
+          </button>
+        ) : null}
         {isSubmitting ? <p className="muted">Идет связь с сервером...</p> : null}
         {submitError ? <p className="error">{submitError}</p> : null}
       </form>
