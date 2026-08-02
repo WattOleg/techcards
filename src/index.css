@@ -235,6 +235,24 @@ button,
   box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
 }
 
+.app-header-add {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+  font-size: 1.55rem;
+  font-weight: 500;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
 .app-drawer-burger-icon {
   display: block;
 }
@@ -378,22 +396,106 @@ button,
   margin-top: 0;
 }
 
-.regulations-hub-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.checklist-view {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.checklist-head {
+  display: grid;
+  gap: 4px;
   padding: 0 2px;
 }
 
-.reg-edit-btn {
-  min-height: 40px;
-  padding: 8px 14px;
-  font-weight: 600;
+.checklist-title {
+  margin: 0;
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.35rem;
+  font-weight: 400;
+  line-height: 1.25;
 }
 
-.reg-edit-hint {
+.checklist-list {
+  list-style: none;
   margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 4px;
+  box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
+}
+
+.checklist-item.is-checked .checklist-text {
+  text-decoration: line-through;
+  color: var(--text2);
+}
+
+.checklist-check {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.checklist-box {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1.5px solid #c8c6bf;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  background: #fff;
+}
+
+.checklist-item.is-checked .checklist-box {
+  background: var(--text);
+  border-color: var(--text);
+  color: #fff;
+}
+
+.checklist-num {
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
+  font-weight: 700;
+  color: var(--text3);
+  padding-top: 3px;
+  flex-shrink: 0;
+}
+
+.checklist-text {
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.checklist-edit {
+  width: 42px;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 15px;
 }
 
 .scc-card-edit {
@@ -670,17 +772,65 @@ h1 {
   padding: 0 calc(var(--page-pad) + 2px);
 }
 
-/* SwipeableCardCarousel — peek + center snap (native touch scroll) */
+/* SwipeableCardCarousel — превью одной карточки → тап → свайп */
 .scc {
   display: grid;
   gap: 12px;
   min-width: 0;
 }
 
-.scc-track {
+.scc-preview-hit {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.scc-preview-hit .scc-card {
+  opacity: 1;
+  max-height: calc(100svh - 280px);
+  pointer-events: none;
+}
+
+.scc-preview-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+}
+
+.scc-preview-edit {
+  width: 100%;
+}
+
+.scc-browse-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.scc-browse-back {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.scc-browse-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+
+.scc-browsing .scc-track {
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
@@ -688,22 +838,23 @@ h1 {
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   touch-action: pan-x;
-  /* боковые поля: центр + peek следующей карточки справа */
-  padding-inline: 12%;
-  scroll-padding-inline: 12%;
+  padding-inline: 0;
+  scroll-padding-inline: 0;
 }
 
-.scc-track::-webkit-scrollbar {
+.scc-browsing .scc-track::-webkit-scrollbar {
   display: none;
 }
 
-.scc-slide {
-  flex: 0 0 76%;
-  width: 76%;
-  max-width: 76%;
-  scroll-snap-align: center;
+.scc-browsing .scc-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: 100%;
+  scroll-snap-align: start;
   scroll-snap-stop: always;
   min-width: 0;
+  padding-inline: 2px;
+  box-sizing: border-box;
 }
 
 .scc-card {
@@ -715,14 +866,13 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* умещается во viewport: хедер + табы + низ ~ 240px */
   max-height: calc(100svh - 250px);
   min-height: 200px;
   box-shadow:
     0 10px 28px rgba(26, 26, 24, 0.08),
     0 1px 0 rgba(26, 26, 24, 0.04);
   transition: box-shadow 180ms ease, opacity 180ms ease;
-  opacity: 0.78;
+  opacity: 1;
 }
 
 .scc-card.is-active {

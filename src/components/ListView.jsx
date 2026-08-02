@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AppDrawer from './AppDrawer'
 import CardItem from './CardItem'
+import ChecklistView from './ChecklistView'
 import RegulationsHub from './RegulationsHub'
 import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
@@ -10,8 +11,8 @@ import {
   CATEGORY_TO_SECTION,
   SECTION_TO_CATEGORY,
 } from '../api/regulationsSupabase.js'
+import { SECTION_TO_CHECKLIST_TYPE, CHECKLIST_TYPES } from '../api/checklistsSupabase.js'
 
-const DRAWER_PLACEHOLDER_IDS = ['checklist-opening', 'checklist-closing']
 const MAIN_TAB_IDS = ['techcards', 'schedule', 'writeoffs']
 const REGULATION_SECTION_IDS = [
   'regulations',
@@ -22,17 +23,7 @@ const REGULATION_SECTION_IDS = [
   'rights_and_duties',
   'equipment_instructions',
 ]
-
-const DRAWER_PLACEHOLDER_COPY = {
-  'checklist-opening': {
-    title: 'Чек-лист открытия смены',
-    text: 'Раздел зарезервирован. Наполнение появится в следующем обновлении.',
-  },
-  'checklist-closing': {
-    title: 'Чек-лист закрытия смены',
-    text: 'Раздел зарезервирован. Наполнение появится в следующем обновлении.',
-  },
-}
+const CHECKLIST_SECTION_IDS = ['checklist-opening', 'checklist-closing']
 
 function ListView({
   cards,
@@ -54,6 +45,7 @@ function ListView({
   authRequired,
   onSignOut,
   regulations,
+  checklists,
 }) {
   const rootRef = useRef(null)
   const [query, setQuery] = useState('')
@@ -205,13 +197,21 @@ function ListView({
         ? 'Графики'
         : activeSection === 'writeoffs'
           ? 'Списания'
-          : DRAWER_PLACEHOLDER_COPY[activeSection]?.title || ''
+          : ''
   const activeMainSection = MAIN_TAB_IDS.includes(activeSection) ? activeSection : null
   const isRegulations = REGULATION_SECTION_IDS.includes(activeSection)
+  const isChecklist = CHECKLIST_SECTION_IDS.includes(activeSection)
   const activeCategory = isRegulations
     ? SECTION_TO_CATEGORY[activeSection] || 'regulations'
     : 'regulations'
-  const drawerPlaceholder = DRAWER_PLACEHOLDER_COPY[activeSection] || null
+  const checklistType = isChecklist ? SECTION_TO_CHECKLIST_TYPE[activeSection] : null
+  const checklistMeta = CHECKLIST_TYPES.find((t) => t.id === checklistType)
+  const showHeaderAdd = isRegulations || isChecklist
+
+  const onHeaderAdd = () => {
+    if (isRegulations) regulations?.onAddCard?.(activeCategory)
+    else if (isChecklist) checklists?.onAddItem?.(checklistType)
+  }
 
   return (
     <div className="view list-view" ref={rootRef}>
@@ -227,6 +227,17 @@ function ListView({
                 authRequired={authRequired}
                 onSignOut={onSignOut}
               />
+              {showHeaderAdd ? (
+                <button
+                  type="button"
+                  className="app-header-add"
+                  onClick={onHeaderAdd}
+                  aria-label={isChecklist ? 'Добавить пункт' : 'Добавить карточку'}
+                  title={isChecklist ? 'Добавить пункт' : 'Добавить карточку'}
+                >
+                  +
+                </button>
+              ) : null}
               {showHeaderTitle ? <h1>{activeSectionLabel}</h1> : <h1 className="list-header-title-spacer" aria-hidden />}
             </div>
           </div>
@@ -281,17 +292,20 @@ function ListView({
           onCategoryChange={(catId) => onSectionChange(CATEGORY_TO_SECTION[catId] || catId)}
           cardsByCategory={regulations.byCategory}
           onEditCard={regulations.onEditCard}
-          onAddCard={regulations.onAddCard}
           loading={regulations.loading}
           error={regulations.error}
         />
       ) : null}
 
-      {drawerPlaceholder ? (
-        <section className="info-page drawer-placeholder">
-          <h3>{drawerPlaceholder.title}</h3>
-          <p className="muted">{drawerPlaceholder.text}</p>
-        </section>
+      {isChecklist && checklists ? (
+        <ChecklistView
+          title={checklistMeta?.label || 'Чек-лист'}
+          items={checklists.byType?.[checklistType] || []}
+          loading={checklists.loading}
+          error={checklists.error}
+          onEditItem={checklists.onEditItem}
+          onAddItem={() => checklists.onAddItem?.(checklistType)}
+        />
       ) : null}
 
       {activeSection === 'techcards' ? (

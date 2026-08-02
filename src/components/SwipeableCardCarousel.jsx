@@ -2,14 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Card from './Card'
 
 /**
- * Переиспользуемая карусель с peek-эффектом и CSS scroll-snap.
- * Горизонтальный скролл — нативный (touch на мобиле), не mouse-drag polyfill.
- *
- * @param {{
- *   cards: Array<{ id: string|number, title: string, body?: import('react').ReactNode, imageUrl?: string }>,
- *   className?: string,
- *   'aria-label'?: string,
- * }} props
+ * Карусель: сначала видна только первая карточка;
+ * тап → режим листания (свайп влево/вправо, по одной карточке).
  */
 export default function SwipeableCardCarousel({
   cards = [],
@@ -20,6 +14,7 @@ export default function SwipeableCardCarousel({
   const trackRef = useRef(null)
   const slideRefs = useRef([])
   const [activeIndex, setActiveIndex] = useState(0)
+  const [browsing, setBrowsing] = useState(false)
   const list = Array.isArray(cards) ? cards : []
   const cardsKey = list.map((c) => String(c?.id ?? '')).join('|')
 
@@ -27,24 +22,23 @@ export default function SwipeableCardCarousel({
     const track = trackRef.current
     const slide = slideRefs.current[nextIndex]
     if (!track || !slide) return
-    const trackRect = track.getBoundingClientRect()
-    const slideRect = slide.getBoundingClientRect()
-    const left =
-      track.scrollLeft + (slideRect.left - trackRect.left) - (trackRect.width - slideRect.width) / 2
+    const left = slide.offsetLeft
     track.scrollTo({ left: Math.max(0, left), behavior })
     setActiveIndex(nextIndex)
   }, [])
 
   useEffect(() => {
     setActiveIndex(0)
+    setBrowsing(false)
     const track = trackRef.current
     if (track) track.scrollTo({ left: 0 })
     slideRefs.current = slideRefs.current.slice(0, list.length)
   }, [cardsKey, list.length])
 
   useEffect(() => {
+    if (!browsing) return undefined
     const track = trackRef.current
-    if (!track || list.length === 0) return
+    if (!track || list.length === 0) return undefined
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -57,23 +51,19 @@ export default function SwipeableCardCarousel({
         const idx = Number(best.target.getAttribute('data-index'))
         if (Number.isFinite(idx)) setActiveIndex(idx)
       },
-      {
-        root: track,
-        threshold: [0.45, 0.6, 0.75],
-      },
+      { root: track, threshold: [0.55, 0.7, 0.85] },
     )
 
     slideRefs.current.forEach((el) => {
       if (el) observer.observe(el)
     })
-
     return () => observer.disconnect()
-  }, [cardsKey, list.length])
+  }, [browsing, cardsKey, list.length])
 
-  // iOS: не даём родительскому вертикальному скроллу перехватить горизонтальный жест
   useEffect(() => {
+    if (!browsing) return undefined
     const track = trackRef.current
-    if (!track) return
+    if (!track) return undefined
 
     let startX = 0
     let startY = 0
@@ -104,14 +94,56 @@ export default function SwipeableCardCarousel({
       track.removeEventListener('touchstart', onStart)
       track.removeEventListener('touchmove', onMove)
     }
-  }, [cardsKey])
+  }, [browsing, cardsKey])
 
   if (list.length === 0) {
     return <p className="muted">Нет карточек.</p>
   }
 
+  const first = list[0]
+
+  if (!browsing) {
+    return (
+      <div className={`scc scc-preview${className ? ` ${className}` : ''}`}>
+        <button
+          type="button"
+          className="scc-preview-hit"
+          onClick={() => setBrowsing(true)}
+          aria-label={
+            list.length > 1
+              ? `${first.title || 'Карточка 1'}. Нажмите, чтобы листать карточки`
+              : first.title || 'Карточка 1'
+          }
+        >
+          <Card card={first} index={0} total={list.length} active />
+        </button>
+        {list.length > 1 ? (
+          <p className="scc-preview-hint muted">Нажмите на карточку, чтобы листать ← →</p>
+        ) : null}
+        {onEditCard ? (
+          <button
+            type="button"
+            className="scc-card-edit scc-preview-edit"
+            onClick={() => onEditCard(first)}
+          >
+            Редактировать
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
-    <div className={`scc${className ? ` ${className}` : ''}`}>
+    <div className={`scc scc-browsing${className ? ` ${className}` : ''}`}>
+      <div className="scc-browse-bar">
+        <button type="button" className="ghost-btn scc-browse-back" onClick={() => setBrowsing(false)}>
+          ← Свернуть
+        </button>
+        <span className="scc-browse-count">
+          {activeIndex + 1} / {list.length}
+        </span>
+      </div>
+
       <div
         ref={trackRef}
         className="scc-track"
@@ -144,14 +176,13 @@ export default function SwipeableCardCarousel({
         <div className="scc-nav">
           <button
             type="button"
-            className="scc-arrow scc-arrow-desktop"
+            className="scc-arrow"
             onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
             disabled={activeIndex <= 0}
             aria-label="Предыдущая карточка"
           >
             ‹
           </button>
-
           <div className="scc-dots" role="tablist" aria-label="Индикаторы карточек">
             {list.map((card, i) => (
               <button
@@ -165,10 +196,9 @@ export default function SwipeableCardCarousel({
               />
             ))}
           </div>
-
           <button
             type="button"
-            className="scc-arrow scc-arrow-desktop"
+            className="scc-arrow"
             onClick={() => scrollToIndex(Math.min(list.length - 1, activeIndex + 1))}
             disabled={activeIndex >= list.length - 1}
             aria-label="Следующая карточка"

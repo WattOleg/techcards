@@ -5,6 +5,7 @@ import EditOverlay from './components/EditOverlay'
 import PinModal from './components/PinModal'
 import AuthGate from './components/AuthGate'
 import RegulationCardEditor from './components/RegulationCardEditor'
+import ChecklistItemEditor from './components/ChecklistItemEditor'
 import { useCards } from './hooks/useCards'
 import { useAuth } from './hooks/useAuth'
 import {
@@ -33,6 +34,14 @@ import {
   upsertRegulationCard,
   deleteRegulationCard,
 } from './api/regulationsSupabase.js'
+import {
+  buildDefaultChecklistRows,
+  fetchChecklistsFromSupabase,
+  groupChecklistsByType,
+  insertChecklistItemsBulk,
+  upsertChecklistItem,
+  deleteChecklistItem,
+} from './api/checklistsSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
@@ -181,6 +190,12 @@ function App() {
   const [regCardEditor, setRegCardEditor] = useState({ open: false, card: null })
   const [regCardSaving, setRegCardSaving] = useState(false)
   const [regCardSaveError, setRegCardSaveError] = useState('')
+  const [checklistRows, setChecklistRows] = useState([])
+  const [checklistsLoading, setChecklistsLoading] = useState(false)
+  const [checklistsError, setChecklistsError] = useState('')
+  const [checklistEditor, setChecklistEditor] = useState({ open: false, item: null })
+  const [checklistSaving, setChecklistSaving] = useState(false)
+  const [checklistSaveError, setChecklistSaveError] = useState('')
   const cachedSchedule = peekCachedSchedule()
   const [scheduleData, setScheduleData] = useState(() =>
     cachedSchedule ? normalizeScheduleServer(cachedSchedule) : DEFAULT_SCHEDULE,
@@ -297,6 +312,40 @@ function App() {
     () => groupRegulationsByCategory(regulationRows),
     [regulationRows],
   )
+
+  // Чек-листы открытия/закрытия
+  useEffect(() => {
+    let active = true
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (!isSupabaseConfigured) return
+        try {
+          if (active) {
+            setChecklistsLoading(true)
+            setChecklistsError('')
+          }
+          let rows = await fetchChecklistsFromSupabase()
+          if (rows.length === 0) {
+            rows = await insertChecklistItemsBulk(
+              buildDefaultChecklistRows(),
+              import.meta.env.VITE_PIN_CODE || '1234',
+            )
+          }
+          if (active) setChecklistRows(rows)
+        } catch (err) {
+          if (active) setChecklistsError(err.message || 'Не удалось загрузить чек-листы')
+        } finally {
+          if (active) setChecklistsLoading(false)
+        }
+      })()
+    }, 250)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  const checklistsByType = useMemo(() => groupChecklistsByType(checklistRows), [checklistRows])
 
   const loadScheduleFromNetwork = useCallback(async ({ showSpinner = true } = {}) => {
     try {
@@ -553,6 +602,19 @@ function App() {
     })
   }
 
+  const requestChecklistItemEdit = (item) => {
+    setPinModal({ open: true, action: 'editChecklistItem', item })
+  }
+
+  const requestChecklistItemAdd = (type) => {
+    const list = checklistsByType[type] || []
+    setPinModal({
+      open: true,
+      action: 'addChecklistItem',
+      item: { type, itemText: '', orderIndex: list.length },
+    })
+  }
+
   const requestScheduleUnlock = () => {
     setPinModal({ open: true, action: 'scheduleUnlock' })
   }
@@ -572,6 +634,12 @@ function App() {
     if (pinModal.action === 'editRegulationCard' || pinModal.action === 'addRegulationCard') {
       setRegCardEditor({ open: true, card: pinModal.card || null })
       setRegCardSaveError('')
+      closePinModal()
+      return
+    }
+    if (pinModal.action === 'editChecklistItem' || pinModal.action === 'addChecklistItem') {
+      setChecklistEditor({ open: true, item: pinModal.item || null })
+      setChecklistSaveError('')
       closePinModal()
       return
     }
@@ -650,6 +718,42 @@ function App() {
       setRegCardSaveError(err.message || 'Не удалось удалить карточку')
     } finally {
       setRegCardSaving(false)
+    }
+  }
+
+  const saveChecklistItem = async (nextItem) => {
+    try {
+      setChecklistSaving(true)
+      setChecklistSaveError('')
+      const saved = await upsertChecklistItem(nextItem, import.meta.env.VITE_PIN_CODE || '1234')
+      setChecklistRows((prev) => {
+        const without = prev.filter((r) => r.id !== saved.id)
+        return [...without, saved].sort((a, b) => {
+          if (a.type !== b.type) return a.type.localeCompare(b.type)
+          return a.orderIndex - b.orderIndex
+        })
+      })
+      setChecklistEditor({ open: false, item: null })
+    } catch (err) {
+      setChecklistSaveError(err.message || 'Не удалось сохранить пункт')
+    } finally {
+      setChecklistSaving(false)
+    }
+  }
+
+  const deleteChecklistItemFromEditor = async () => {
+    const id = checklistEditor.item?.id
+    if (!id) return
+    try {
+      setChecklistSaving(true)
+      setChecklistSaveError('')
+      await deleteChecklistItem(id, import.meta.env.VITE_PIN_CODE || '1234')
+      setChecklistRows((prev) => prev.filter((r) => r.id !== id))
+      setChecklistEditor({ open: false, item: null })
+    } catch (err) {
+      setChecklistSaveError(err.message || 'Не удалось удалить пункт')
+    } finally {
+      setChecklistSaving(false)
     }
   }
 
@@ -834,6 +938,13 @@ function App() {
               onEditCard: requestRegulationCardEdit,
               onAddCard: requestRegulationCardAdd,
             }}
+            checklists={{
+              byType: checklistsByType,
+              loading: checklistsLoading,
+              error: checklistsError,
+              onEditItem: requestChecklistItemEdit,
+              onAddItem: requestChecklistItemAdd,
+            }}
             stopList={{
               data: stopListData,
               loading: stopListLoading,
@@ -926,7 +1037,11 @@ function App() {
                   ? 'Новая карточка регламента'
                   : pinModal.action === 'editRegulationCard'
                     ? 'Редактировать карточку'
-                    : 'Редактировать'
+                    : pinModal.action === 'addChecklistItem'
+                      ? 'Новый пункт чек-листа'
+                      : pinModal.action === 'editChecklistItem'
+                        ? 'Редактировать пункт'
+                        : 'Редактировать'
         }
         onClose={closePinModal}
         onSuccess={onPinSuccess}
@@ -940,6 +1055,16 @@ function App() {
         onClose={() => setRegCardEditor({ open: false, card: null })}
         onSave={saveRegulationCard}
         onDelete={regCardEditor.card?.id ? deleteRegulationCardFromEditor : undefined}
+      />
+
+      <ChecklistItemEditor
+        open={checklistEditor.open}
+        item={checklistEditor.item}
+        saving={checklistSaving}
+        error={checklistSaveError}
+        onClose={() => setChecklistEditor({ open: false, item: null })}
+        onSave={saveChecklistItem}
+        onDelete={checklistEditor.item?.id ? deleteChecklistItemFromEditor : undefined}
       />
     </div>
   )
