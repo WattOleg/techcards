@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { normalizePhotoUrl } from '../utils/photoUrl'
+import { getCardPhotoUrls, normalizePhotoUrl } from '../utils/photoUrl'
 
 function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   const [form, setForm] = useState(null)
@@ -8,7 +8,13 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    if (card) setForm(card)
+    if (card) {
+      const photoUrls = getCardPhotoUrls(card)
+      setForm({
+        ...card,
+        photoUrls: photoUrls.length ? photoUrls : [''],
+      })
+    }
     setSaved(false)
     setSubmitError('')
     setIsSubmitting(false)
@@ -18,6 +24,28 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
 
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const setPhotoAt = (index, value) => {
+    setForm((prev) => {
+      const next = [...(prev.photoUrls || [])]
+      next[index] = value
+      return { ...prev, photoUrls: next }
+    })
+  }
+
+  const addPhoto = () => {
+    setForm((prev) => ({
+      ...prev,
+      photoUrls: [...(prev.photoUrls || []), ''],
+    }))
+  }
+
+  const removePhoto = (index) => {
+    setForm((prev) => {
+      const next = (prev.photoUrls || []).filter((_, i) => i !== index)
+      return { ...prev, photoUrls: next.length ? next : [''] }
+    })
   }
 
   const setIngredient = (index, field, value) => {
@@ -58,6 +86,7 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   }
 
   const isCreate = !card?.sheetName
+  const photoUrls = form.photoUrls || ['']
 
   return (
     <div className={`edit-overlay ${isOpen ? 'open' : ''}`} aria-hidden={!isOpen}>
@@ -98,14 +127,29 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
         <label>Метод<input value={form.method || ''} onChange={(e) => setField('method', e.target.value)} /></label>
         <label>Бокал<input value={form.glass || ''} onChange={(e) => setField('glass', e.target.value)} /></label>
         <label>Украшение<input value={form.garnish || ''} onChange={(e) => setField('garnish', e.target.value)} /></label>
-        <label>
-          Фото URL
-          <input
-            value={form.photoUrl || ''}
-            onChange={(e) => setField('photoUrl', e.target.value)}
-            onBlur={(e) => setField('photoUrl', normalizePhotoUrl(e.target.value))}
-          />
-        </label>
+
+        <div className="ing-head">
+          <h4>Фото (URL)</h4>
+          <button type="button" className="ghost-btn" onClick={addPhoto}>
+            + Фото
+          </button>
+        </div>
+        <div className="photo-url-list">
+          {photoUrls.map((url, index) => (
+            <div key={index} className="photo-url-row">
+              <input
+                placeholder={`Фото ${index + 1}: https://…`}
+                value={url}
+                onChange={(e) => setPhotoAt(index, e.target.value)}
+                onBlur={(e) => setPhotoAt(index, normalizePhotoUrl(e.target.value))}
+              />
+              <button type="button" className="ghost-btn" onClick={() => removePhoto(index)}>
+                Удалить
+              </button>
+            </div>
+          ))}
+        </div>
+
         <label>
           Технология
           <textarea value={form.technology || ''} onChange={(e) => setField('technology', e.target.value)} />

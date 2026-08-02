@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getPhotoCandidates } from '../utils/photoUrl'
+import { getCardPhotoUrls, getPhotoCandidates } from '../utils/photoUrl'
 
 function CardItem({ card, onClick }) {
-  const photoCandidates = useMemo(() => getPhotoCandidates(card.photoUrl), [card.photoUrl])
+  const primaryUrl = useMemo(() => getCardPhotoUrls(card)[0] || '', [card])
+  const photoCandidates = useMemo(() => getPhotoCandidates(primaryUrl), [primaryUrl])
   const [photoIdx, setPhotoIdx] = useState(0)
 
   useEffect(() => {
     setPhotoIdx(0)
-  }, [card.photoUrl])
+  }, [primaryUrl])
 
   const hasCandidate = photoIdx < photoCandidates.length
   const photoUrl = hasCandidate ? photoCandidates[photoIdx] : ''

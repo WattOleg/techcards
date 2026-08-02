@@ -50,7 +50,7 @@ import {
 } from './api/equipmentSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
-import { normalizePhotoUrl } from './utils/photoUrl'
+import { serializePhotoUrls, getCardPhotoUrls } from './utils/photoUrl'
 import { bindNetworkSettleListeners } from './utils/network'
 import { startServerLinkMonitor } from './hooks/useServerLink'
 
@@ -728,7 +728,13 @@ function App() {
   }
 
   const onSaveEdit = async (nextCard) => {
-    const preparedCard = { ...nextCard, photoUrl: normalizePhotoUrl(nextCard.photoUrl) }
+    const photoUrls = getCardPhotoUrls(nextCard.photoUrls?.length ? nextCard.photoUrls : nextCard.photoUrl)
+    const preparedCard = {
+      ...nextCard,
+      photoUrls,
+      photoUrl: serializePhotoUrls(photoUrls),
+    }
+    delete preparedCard.photoUrls
     const isCreate = !selectedCard || draftCard !== null
 
     if (isCreate) {
@@ -736,13 +742,13 @@ function App() {
         throw new Error('Заполните идентификатор листа (sheetName)')
       }
       await createCard(preparedCard, import.meta.env.VITE_PIN_CODE)
-      addLocalCard(preparedCard)
+      addLocalCard({ ...preparedCard, photoUrls })
       setSelectedId(preparedCard.sheetName)
       setView('detail')
       setDraftCard(null)
     } else {
       await updateCard(preparedCard.sheetName, preparedCard, import.meta.env.VITE_PIN_CODE)
-      updateLocalCard(preparedCard)
+      updateLocalCard({ ...preparedCard, photoUrls })
     }
     setEditOpen(false)
   }

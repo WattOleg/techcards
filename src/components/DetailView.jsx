@@ -1,15 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getPhotoCandidates } from '../utils/photoUrl'
+import PhotoGallery from './PhotoGallery'
 import ServerLinkDot from './ServerLinkDot'
+import { getCardPhotoUrls } from '../utils/photoUrl'
 
 function DetailView({ card, loading, onBack, onEdit, onExport }) {
-  const photoCandidates = useMemo(() => getPhotoCandidates(card?.photoUrl), [card?.photoUrl])
-  const [photoIdx, setPhotoIdx] = useState(0)
-
-  useEffect(() => {
-    setPhotoIdx(0)
-  }, [card?.photoUrl])
-
   if (!card) {
     return (
       <div className="view detail-view">
@@ -18,36 +11,27 @@ function DetailView({ card, loading, onBack, onEdit, onExport }) {
     )
   }
 
-  const hasCandidate = photoIdx < photoCandidates.length
-  const photoUrl = hasCandidate ? photoCandidates[photoIdx] : ''
+  const photoUrls = getCardPhotoUrls(card)
 
   return (
     <div className="view detail-view">
-      <div className="hero">
-        {photoUrl ? (
-          <img
-            src={photoUrl}
-            alt={card.name}
-            referrerPolicy="no-referrer"
-            onError={() =>
-              setPhotoIdx((prev) => (prev + 1 <= photoCandidates.length ? prev + 1 : prev))
-            }
-          />
-        ) : (
-          <div className="hero-placeholder">🍹</div>
-        )}
-        <div className="hero-top">
-          <button type="button" className="icon-btn" onClick={onBack}>
-            ←
-          </button>
-          <div className="hero-top-trailing">
-            <ServerLinkDot />
-            <button type="button" className="icon-btn" onClick={onEdit}>
-              Изменить
+      <PhotoGallery
+        urls={photoUrls}
+        alt={card.name}
+        topSlot={
+          <div className="hero-top">
+            <button type="button" className="icon-btn" onClick={onBack}>
+              ←
             </button>
+            <div className="hero-top-trailing">
+              <ServerLinkDot />
+              <button type="button" className="icon-btn" onClick={onEdit}>
+                Изменить
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <h2 className="title">{card.name}</h2>
       <p className="subtitle">{card.nameRu}</p>
