@@ -4,6 +4,7 @@ import DetailView from './components/DetailView'
 import EditOverlay from './components/EditOverlay'
 import PinModal from './components/PinModal'
 import AuthGate from './components/AuthGate'
+import RegulationCardEditor from './components/RegulationCardEditor'
 import { useCards } from './hooks/useCards'
 import { useAuth } from './hooks/useAuth'
 import {
@@ -23,8 +24,16 @@ import {
   syncWriteoffsOfflineCache,
   updateCard,
   updateSchedule,
-  updateSectionContent,
 } from './api/sheets'
+import {
+  buildSeedRowsFromLegacySections,
+  fetchRegulationsFromSupabase,
+  groupRegulationsByCategory,
+  insertRegulationCardsBulk,
+  upsertRegulationCard,
+  deleteRegulationCard,
+} from './api/regulationsSupabase.js'
+import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf, shareCardPdf } from './utils/pdfExport'
 import { normalizePhotoUrl } from './utils/photoUrl'
 import { bindNetworkSettleListeners } from './utils/network'
@@ -51,15 +60,6 @@ function makeEmptyCard() {
 }
 
 const CATEGORY_PRIORITY = ['Кофе', 'Матча', 'Чай листовой', 'Чай авторский', 'Лимонад']
-const APP_SECTIONS = [
-  { id: 'techcards', label: 'Карточки' },
-  { id: 'schedule', label: 'Графики' },
-  { id: 'writeoffs', label: 'Списания' },
-  { id: 'regulations', label: 'Регламенты' },
-  { id: 'appearance', label: 'Требования к внешнему виду' },
-  { id: 'behavior', label: 'Поведение' },
-  { id: 'rights', label: 'Права и ответственность' },
-]
 
 const DETAIL_HISTORY = { tk: 'detail' }
 const EDGE_SWIPE_ZONE = 36
@@ -175,13 +175,12 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [activeSection, setActiveSection] = useState('techcards')
   const [authGateOpen, setAuthGateOpen] = useState(false)
-  const [sectionContent, setSectionContent] = useState(() => ({
-    ...DEFAULT_SECTION_CONTENT,
-    ...(peekCachedSections() || {}),
-  }))
-  const [sectionEditor, setSectionEditor] = useState({ open: false, sectionId: null, text: '' })
-  const [sectionSaving, setSectionSaving] = useState(false)
-  const [sectionSaveError, setSectionSaveError] = useState('')
+  const [regulationRows, setRegulationRows] = useState([])
+  const [regulationsLoading, setRegulationsLoading] = useState(false)
+  const [regulationsError, setRegulationsError] = useState('')
+  const [regCardEditor, setRegCardEditor] = useState({ open: false, card: null })
+  const [regCardSaving, setRegCardSaving] = useState(false)
+  const [regCardSaveError, setRegCardSaveError] = useState('')
   const cachedSchedule = peekCachedSchedule()
   const [scheduleData, setScheduleData] = useState(() =>
     cachedSchedule ? normalizeScheduleServer(cachedSchedule) : DEFAULT_SCHEDULE,
@@ -250,17 +249,41 @@ function App() {
     setAuthGateOpen(!auth.loading && !auth.isAuthenticated)
   }, [auth.authRequired, auth.isAuthenticated, auth.loading])
 
-  // Секции — лёгкий запрос после первого кадра, не блокирует список.
+  // Регламенты: Supabase + одноразовая миграция из Sheets/defaults, если таблица пуста.
   useEffect(() => {
     let active = true
     const timer = window.setTimeout(() => {
       void (async () => {
+        if (!isSupabaseConfigured) {
+          if (active) setRegulationsError('Supabase не настроен — регламенты недоступны')
+          return
+        }
         try {
-          const sharedSections = await fetchSectionsContent()
-          if (!active) return
-          setSectionContent({ ...DEFAULT_SECTION_CONTENT, ...sharedSections })
-        } catch {
-          /* кэш / дефолты уже на экране */
+          if (active) {
+            setRegulationsLoading(true)
+            setRegulationsError('')
+          }
+          let legacy = {
+            ...DEFAULT_SECTION_CONTENT,
+            ...(peekCachedSections() || {}),
+          }
+          try {
+            const shared = await fetchSectionsContent()
+            legacy = { ...DEFAULT_SECTION_CONTENT, ...shared }
+          } catch {
+            /* кэш / дефолты */
+          }
+
+          let rows = await fetchRegulationsFromSupabase()
+          if (rows.length === 0) {
+            const seed = buildSeedRowsFromLegacySections(legacy)
+            rows = await insertRegulationCardsBulk(seed, import.meta.env.VITE_PIN_CODE || '1234')
+          }
+          if (active) setRegulationRows(rows)
+        } catch (err) {
+          if (active) setRegulationsError(err.message || 'Не удалось загрузить регламенты')
+        } finally {
+          if (active) setRegulationsLoading(false)
         }
       })()
     }, 200)
@@ -269,6 +292,11 @@ function App() {
       window.clearTimeout(timer)
     }
   }, [])
+
+  const regulationsByCategory = useMemo(
+    () => groupRegulationsByCategory(regulationRows),
+    [regulationRows],
+  )
 
   const loadScheduleFromNetwork = useCallback(async ({ showSpinner = true } = {}) => {
     try {
@@ -512,8 +540,23 @@ function App() {
     setPinModal({ open: true, action })
   }
 
-  const requestSectionEdit = (sectionId) => {
-    setPinModal({ open: true, action: 'editSection', sectionId })
+  const requestRegulationCardEdit = (card) => {
+    setPinModal({ open: true, action: 'editRegulationCard', card })
+  }
+
+  const requestRegulationCardAdd = (category) => {
+    const list = regulationsByCategory[category] || []
+    setPinModal({
+      open: true,
+      action: 'addRegulationCard',
+      card: {
+        category,
+        title: '',
+        content: '',
+        orderIndex: list.length,
+        images: [],
+      },
+    })
   }
 
   const requestScheduleUnlock = () => {
@@ -532,17 +575,9 @@ function App() {
       closePinModal()
       return
     }
-    if (pinModal.action === 'editSection') {
-      const sectionId = pinModal.sectionId
-      const current = sectionId ? sectionContent[sectionId] : null
-      if (sectionId && current) {
-        setSectionEditor({
-          open: true,
-          sectionId,
-          text: current.points.join('\n'),
-        })
-        setSectionSaveError('')
-      }
+    if (pinModal.action === 'editRegulationCard' || pinModal.action === 'addRegulationCard') {
+      setRegCardEditor({ open: true, card: pinModal.card || null })
+      setRegCardSaveError('')
       closePinModal()
       return
     }
@@ -588,36 +623,39 @@ function App() {
     setEditOpen(false)
   }
 
-  const saveSectionEditor = async () => {
-    const sectionId = sectionEditor.sectionId
-    if (!sectionId) return
-    const points = sectionEditor.text
-      .split(/\r\n|\n|\r/)
-      .map((line) => line.replace(/\u00a0/g, ' ').trim())
-      .filter(Boolean)
-    const safePoints = points.length ? points : ['Добавьте первый пункт.']
-    const next = {
-      ...sectionContent,
-      [sectionId]: {
-        ...sectionContent[sectionId],
-        points: safePoints,
-      },
-    }
+  const saveRegulationCard = async (nextCard) => {
     try {
-      setSectionSaving(true)
-      setSectionSaveError('')
-      await updateSectionContent(
-        sectionId,
-        sectionContent[sectionId]?.title || sectionId,
-        safePoints,
-        import.meta.env.VITE_PIN_CODE,
-      )
-      setSectionContent(next)
-      setSectionEditor({ open: false, sectionId: null, text: '' })
+      setRegCardSaving(true)
+      setRegCardSaveError('')
+      const saved = await upsertRegulationCard(nextCard, import.meta.env.VITE_PIN_CODE || '1234')
+      setRegulationRows((prev) => {
+        const without = prev.filter((r) => r.id !== saved.id)
+        return [...without, saved].sort((a, b) => {
+          if (a.category !== b.category) return a.category.localeCompare(b.category)
+          return a.orderIndex - b.orderIndex
+        })
+      })
+      setRegCardEditor({ open: false, card: null })
     } catch (err) {
-      setSectionSaveError(err.message || 'Не удалось сохранить раздел')
+      setRegCardSaveError(err.message || 'Не удалось сохранить карточку')
     } finally {
-      setSectionSaving(false)
+      setRegCardSaving(false)
+    }
+  }
+
+  const deleteRegulationCardFromEditor = async () => {
+    const id = regCardEditor.card?.id
+    if (!id) return
+    try {
+      setRegCardSaving(true)
+      setRegCardSaveError('')
+      await deleteRegulationCard(id, import.meta.env.VITE_PIN_CODE || '1234')
+      setRegulationRows((prev) => prev.filter((r) => r.id !== id))
+      setRegCardEditor({ open: false, card: null })
+    } catch (err) {
+      setRegCardSaveError(err.message || 'Не удалось удалить карточку')
+    } finally {
+      setRegCardSaving(false)
     }
   }
 
@@ -786,10 +824,7 @@ function App() {
             loading={loading}
             error={error}
             activeSection={activeSection}
-            sections={APP_SECTIONS}
-            sectionContent={sectionContent}
             onSectionChange={setActiveSection}
-            onSectionEdit={requestSectionEdit}
             onSelect={openDetail}
             onRefresh={refresh}
             onExportSelected={exportSelectedCards}
@@ -798,6 +833,13 @@ function App() {
             authEmail={auth.email}
             authRequired={auth.authRequired}
             onSignOut={auth.signOut}
+            regulations={{
+              byCategory: regulationsByCategory,
+              loading: regulationsLoading,
+              error: regulationsError,
+              onEditCard: requestRegulationCardEdit,
+              onAddCard: requestRegulationCardAdd,
+            }}
             stopList={{
               data: stopListData,
               loading: stopListLoading,
@@ -880,47 +922,25 @@ function App() {
               ? 'Создать'
               : pinModal.action === 'scheduleUnlock'
                 ? 'Графики'
-                : pinModal.action === 'editSection'
-                  ? 'Редактировать раздел'
-                  : 'Редактировать'
+                : pinModal.action === 'addRegulationCard'
+                  ? 'Новая карточка регламента'
+                  : pinModal.action === 'editRegulationCard'
+                    ? 'Редактировать карточку'
+                    : 'Редактировать'
         }
         onClose={closePinModal}
         onSuccess={onPinSuccess}
       />
 
-      {sectionEditor.open ? (
-        <div className="export-modal-backdrop" onClick={() => setSectionEditor({ open: false, sectionId: null, text: '' })}>
-          <div className="export-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Редактирование раздела</h3>
-            <p className="muted section-editor-hint">
-              Каждая строка — отдельный абзац (без автонумерации). Заголовки: <code>#</code>, <code>##</code>,{' '}
-              <code>###</code> в начале строки; можно <code>#2. Подзаголовок</code>. Списки: строки с{' '}
-              <code>-</code>, <code>*</code> или <code>•</code>. Разделитель: <code>---</code>. Примечание:{' '}
-              <code>&gt; текст</code>. В строке: <code>**жирный**</code>, <code>__жирный__</code>,{' '}
-              <code>_курсив_</code>. Свой текст <code>1. 2.</code> остаётся как вы написали.
-            </p>
-            <textarea
-              className="section-editor-textarea"
-              value={sectionEditor.text}
-              onChange={(e) => setSectionEditor((prev) => ({ ...prev, text: e.target.value }))}
-            />
-            <div className="export-actions">
-              <button
-                type="button"
-                className="ghost-btn"
-                disabled={sectionSaving}
-                onClick={() => setSectionEditor({ open: false, sectionId: null, text: '' })}
-              >
-                Отмена
-              </button>
-              <button type="button" className="btn btn-dark" onClick={saveSectionEditor} disabled={sectionSaving}>
-                {sectionSaving ? 'Сохраняю...' : 'Сохранить'}
-              </button>
-            </div>
-            {sectionSaveError ? <p className="error">{sectionSaveError}</p> : null}
-          </div>
-        </div>
-      ) : null}
+      <RegulationCardEditor
+        open={regCardEditor.open}
+        card={regCardEditor.card}
+        saving={regCardSaving}
+        error={regCardSaveError}
+        onClose={() => setRegCardEditor({ open: false, card: null })}
+        onSave={saveRegulationCard}
+        onDelete={regCardEditor.card?.id ? deleteRegulationCardFromEditor : undefined}
+      />
     </div>
   )
 }

@@ -15,6 +15,7 @@ export default function SwipeableCardCarousel({
   cards = [],
   className = '',
   'aria-label': ariaLabel = 'Карточки',
+  onEditCard,
 }) {
   const trackRef = useRef(null)
   const slideRefs = useRef([])
@@ -128,7 +129,13 @@ export default function SwipeableCardCarousel({
             }}
             aria-hidden={i !== activeIndex}
           >
-            <Card card={card} index={i} total={list.length} active={i === activeIndex} />
+            <Card
+              card={card}
+              index={i}
+              total={list.length}
+              active={i === activeIndex}
+              onEdit={onEditCard ? () => onEditCard(card) : undefined}
+            />
           </div>
         ))}
       </div>

@@ -4,7 +4,6 @@ const DRAWER_ITEMS = [
   { id: 'regulations', label: 'Регламенты' },
   { id: 'checklist-opening', label: 'Чек-лист открытия смены' },
   { id: 'checklist-closing', label: 'Чек-лист закрытия смены' },
-  { id: 'menu-search', label: 'Поиск' },
 ]
 
 function HamburgerIcon() {
@@ -27,7 +26,6 @@ function HamburgerIcon() {
 
 /**
  * Гамбургер + боковое меню приложения.
- * Пункты checklists/search зарезервированы (наполнение — следующие этапы).
  */
 export default function AppDrawer({
   activeSection,
@@ -63,6 +61,15 @@ export default function AppDrawer({
   }
 
   const email = authEmail || authUser?.email || ''
+  const regActive = [
+    'regulations',
+    'appearance',
+    'behavior',
+    'rights',
+    'requirements',
+    'rights_and_duties',
+    'equipment_instructions',
+  ].includes(activeSection)
 
   return (
     <div className="app-drawer-root">
@@ -98,10 +105,7 @@ export default function AppDrawer({
 
             <nav className="app-drawer-nav" aria-label="Разделы приложения">
               {DRAWER_ITEMS.map((item) => {
-                const isActive =
-                  item.id === 'regulations'
-                    ? ['regulations', 'appearance', 'behavior', 'rights'].includes(activeSection)
-                    : activeSection === item.id
+                const isActive = item.id === 'regulations' ? regActive : activeSection === item.id
                 return (
                   <button
                     key={item.id}

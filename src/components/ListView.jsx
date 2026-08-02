@@ -1,14 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AppDrawer from './AppDrawer'
 import CardItem from './CardItem'
-import InfoCardsCarousel from './InfoCardsCarousel'
+import RegulationsHub from './RegulationsHub'
 import SearchBar from './SearchBar'
 import ScheduleView from './ScheduleView'
 import ServerLinkDot from './ServerLinkDot'
 import WriteoffsView from './WriteoffsView'
+import {
+  CATEGORY_TO_SECTION,
+  SECTION_TO_CATEGORY,
+} from '../api/regulationsSupabase.js'
 
-const INFO_SECTION_IDS = ['regulations', 'appearance', 'behavior', 'rights']
-const DRAWER_PLACEHOLDER_IDS = ['checklist-opening', 'checklist-closing', 'menu-search']
+const DRAWER_PLACEHOLDER_IDS = ['checklist-opening', 'checklist-closing']
+const MAIN_TAB_IDS = ['techcards', 'schedule', 'writeoffs']
+const REGULATION_SECTION_IDS = [
+  'regulations',
+  'appearance',
+  'behavior',
+  'rights',
+  'requirements',
+  'rights_and_duties',
+  'equipment_instructions',
+]
 
 const DRAWER_PLACEHOLDER_COPY = {
   'checklist-opening': {
@@ -19,10 +32,6 @@ const DRAWER_PLACEHOLDER_COPY = {
     title: 'Чек-лист закрытия смены',
     text: 'Раздел зарезервирован. Наполнение появится в следующем обновлении.',
   },
-  'menu-search': {
-    title: 'Поиск',
-    text: 'Поиск по разделам и регламентам появится в следующем обновлении. Поиск по техкартам — во вкладке «Карточки».',
-  },
 }
 
 function ListView({
@@ -32,10 +41,7 @@ function ListView({
   loading,
   error,
   activeSection,
-  sections,
-  sectionContent,
   onSectionChange,
-  onSectionEdit,
   onSelect,
   onRefresh,
   onExportSelected,
@@ -47,6 +53,7 @@ function ListView({
   authEmail,
   authRequired,
   onSignOut,
+  regulations,
 }) {
   const rootRef = useRef(null)
   const [query, setQuery] = useState('')
@@ -190,22 +197,20 @@ function ListView({
     }
   }
 
-  const activeSectionLabel = sections.find((item) => item.id === activeSection)?.label
-    || DRAWER_PLACEHOLDER_COPY[activeSection]?.title
-    || 'Карточки'
-  const activeMainSection =
-    activeSection === 'techcards' || activeSection === 'schedule' || activeSection === 'writeoffs'
-      ? activeSection
-      : DRAWER_PLACEHOLDER_IDS.includes(activeSection)
-        ? null
-        : 'regulations'
-  const infoBlock =
-    activeSection !== 'techcards' &&
-    activeSection !== 'schedule' &&
-    activeSection !== 'writeoffs' &&
-    !DRAWER_PLACEHOLDER_IDS.includes(activeSection)
-      ? sectionContent[activeSection]
-      : null
+  const showHeaderTitle = MAIN_TAB_IDS.includes(activeSection)
+  const activeSectionLabel =
+    activeSection === 'techcards'
+      ? 'Карточки'
+      : activeSection === 'schedule'
+        ? 'Графики'
+        : activeSection === 'writeoffs'
+          ? 'Списания'
+          : DRAWER_PLACEHOLDER_COPY[activeSection]?.title || ''
+  const activeMainSection = MAIN_TAB_IDS.includes(activeSection) ? activeSection : null
+  const isRegulations = REGULATION_SECTION_IDS.includes(activeSection)
+  const activeCategory = isRegulations
+    ? SECTION_TO_CATEGORY[activeSection] || 'regulations'
+    : 'regulations'
   const drawerPlaceholder = DRAWER_PLACEHOLDER_COPY[activeSection] || null
 
   return (
@@ -222,7 +227,7 @@ function ListView({
                 authRequired={authRequired}
                 onSignOut={onSignOut}
               />
-              <h1>{activeSectionLabel}</h1>
+              {showHeaderTitle ? <h1>{activeSectionLabel}</h1> : <h1 className="list-header-title-spacer" aria-hidden />}
             </div>
           </div>
           <div className="list-header-badges">
@@ -265,27 +270,22 @@ function ListView({
             categories={displayCategories}
           />
         ) : null}
-
-        {activeMainSection === 'regulations' ? (
-          <div className="reg-subtabs">
-            {sections
-              .filter((item) => INFO_SECTION_IDS.includes(item.id))
-              .map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`chip ${activeSection === item.id ? 'chip-active' : ''}`}
-                  onClick={() => onSectionChange(item.id)}
-                >
-                  {item.label}
-                </button>
-              ))}
-          </div>
-        ) : null}
       </div>
 
       {activeSection === 'schedule' && schedule ? <ScheduleView {...schedule} /> : null}
       {activeSection === 'writeoffs' && writeoffs ? <WriteoffsView {...writeoffs} /> : null}
+
+      {isRegulations && regulations ? (
+        <RegulationsHub
+          activeCategory={activeCategory}
+          onCategoryChange={(catId) => onSectionChange(CATEGORY_TO_SECTION[catId] || catId)}
+          cardsByCategory={regulations.byCategory}
+          onEditCard={regulations.onEditCard}
+          onAddCard={regulations.onAddCard}
+          loading={regulations.loading}
+          error={regulations.error}
+        />
+      ) : null}
 
       {drawerPlaceholder ? (
         <section className="info-page drawer-placeholder">
@@ -294,23 +294,7 @@ function ListView({
         </section>
       ) : null}
 
-      {infoBlock ? (
-        <section className="info-page info-page-carousel">
-          <div className="info-head">
-            <h3>{infoBlock.title}</h3>
-            <button type="button" className="ghost-btn" onClick={() => onSectionEdit(activeSection)}>
-              Редактировать
-            </button>
-          </div>
-          <InfoCardsCarousel
-            sectionId={activeSection}
-            title={infoBlock.title}
-            points={infoBlock.points}
-          />
-        </section>
-      ) : activeSection === 'schedule' ||
-        activeSection === 'writeoffs' ||
-        drawerPlaceholder ? null : (
+      {activeSection === 'techcards' ? (
         <>
           <div className="toolbar-row">
             <button
@@ -508,9 +492,9 @@ function ListView({
             </div>
           ) : null}
         </>
-      )}
+      ) : null}
 
-      <nav className="bottom-tabs" aria-label="Разделы">
+      <nav className="bottom-tabs bottom-tabs-3" aria-label="Разделы">
         <button
           type="button"
           className={`bottom-tab ${activeMainSection === 'techcards' ? 'is-active' : ''}`}
@@ -531,13 +515,6 @@ function ListView({
           onClick={() => onSectionChange('writeoffs')}
         >
           Списания
-        </button>
-        <button
-          type="button"
-          className={`bottom-tab ${activeMainSection === 'regulations' ? 'is-active' : ''}`}
-          onClick={() => onSectionChange('regulations')}
-        >
-          Регламенты
         </button>
       </nav>
 

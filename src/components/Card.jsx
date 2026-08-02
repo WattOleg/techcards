@@ -1,13 +1,7 @@
 /**
  * Карточка для SwipeableCardCarousel.
- * @param {{
- *   card: { id: string|number, title: string, body?: import('react').ReactNode, imageUrl?: string },
- *   index?: number,
- *   total?: number,
- *   active?: boolean,
- * }} props
  */
-export default function Card({ card, index = 0, total = 1, active = false }) {
+export default function Card({ card, index = 0, total = 1, active = false, onEdit }) {
   if (!card) return null
 
   const num = String(index + 1).padStart(2, '0')
@@ -43,6 +37,19 @@ export default function Card({ card, index = 0, total = 1, active = false }) {
             card.body
           )}
         </div>
+      ) : null}
+
+      {typeof onEdit === 'function' ? (
+        <button
+          type="button"
+          className="scc-card-edit"
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit(card)
+          }}
+        >
+          Редактировать
+        </button>
       ) : null}
     </article>
   )

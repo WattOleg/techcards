@@ -1,4 +1,4 @@
-# e-Bar: writeoffs + stop list migration
+# e-Bar: writeoffs + stop list + regulations
 
 ## 1. Import data (once)
 
@@ -16,7 +16,17 @@ select
 
 Expected: stop_list=3, entries=250, templates=5
 
-## 2. App flag
+## 2. Regulations table
+
+1. SQL Editor → paste `supabase/migrations/001_regulations.sql` → Run
+2. First app open with empty table migrates Sheets/defaults into `regulations` rows (PIN = `VITE_PIN_CODE`).
+3. Check:
+
+```sql
+select category, count(*) from public.regulations group by 1 order by 1;
+```
+
+## 3. App flag
 
 Already set in `.env` / `.env.production`:
 
@@ -24,10 +34,11 @@ Already set in `.env` / `.env.production`:
 VITE_OPS_BACKEND=supabase
 ```
 
-## 3. Apps Script freeze
+## 4. Apps Script freeze
 
 `Code.gs` has `OPS_MOVED_TO_SUPABASE = true` — write/update/delete for writeoffs & stop list return an error. Redeploy Apps Script after pull.
 
-## 4. Rollback
+## 5. Rollback
 
 Set `VITE_OPS_BACKEND=sheets` and redeploy the web app. Sheets data remains as archive (read still works via GAS get*).
+Regulations stay in Supabase independently.
