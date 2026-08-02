@@ -10,7 +10,6 @@ export const REGULATION_CATEGORIES = [
   { id: 'requirements', label: 'Требования', legacySectionId: 'appearance' },
   { id: 'behavior', label: 'Поведение', legacySectionId: 'behavior' },
   { id: 'rights_and_duties', label: 'Права и обязанности', legacySectionId: 'rights' },
-  { id: 'equipment_instructions', label: 'Инструкции по оборудованию', legacySectionId: null, isEquipment: true },
 ]
 
 /** UI section id → supabase category */

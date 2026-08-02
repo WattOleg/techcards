@@ -63,7 +63,7 @@ import {
 } from './api/updatesSupabase.js'
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
-import { serializePhotoUrls, getCardPhotoUrls } from './utils/photoUrl'
+import { serializePhotoUrls, parsePhotoUrls } from './utils/photoUrl'
 import { bindNetworkSettleListeners } from './utils/network'
 import { startServerLinkMonitor } from './hooks/useServerLink'
 
@@ -803,10 +803,10 @@ function App() {
   }
 
   const onSaveEdit = async (nextCard) => {
-    const photoUrls = getCardPhotoUrls(nextCard.photoUrls?.length ? nextCard.photoUrls : nextCard.photoUrl)
+    // Берём массив из формы; пустые поля отбрасываются внутри parse/serialize.
+    const photoUrls = parsePhotoUrls(nextCard.photoUrls ?? nextCard.photoUrl)
     const preparedCard = {
       ...nextCard,
-      photoUrls,
       photoUrl: serializePhotoUrls(photoUrls),
     }
     delete preparedCard.photoUrls

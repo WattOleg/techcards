@@ -119,7 +119,6 @@ export default function AppDrawer({
     'rights',
     'requirements',
     'rights_and_duties',
-    'equipment_instructions',
   ].includes(activeSection)
 
   return (

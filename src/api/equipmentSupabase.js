@@ -85,6 +85,25 @@ export async function deleteEquipmentCard(id, pin) {
   return true
 }
 
+/** Загрузка фото с устройства (тот же public bucket `updates`, папка equipment/). */
+export async function uploadEquipmentImage(file) {
+  assertConfigured()
+  if (!file) throw new Error('Файл не выбран')
+  const safeName = String(file.name || 'photo.jpg')
+    .replace(/[^\w.\-а-яА-ЯёЁ]+/g, '_')
+    .slice(0, 80)
+  const path = `equipment/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeName}`
+  const { error } = await supabase.storage.from('updates').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type || 'image/jpeg',
+  })
+  if (error) throwSb(error, 'Не удалось загрузить фото')
+  const { data } = supabase.storage.from('updates').getPublicUrl(path)
+  reportServerReachable()
+  return data?.publicUrl || ''
+}
+
 /** Перенос старых строк regulations.equipment_instructions → equipment_cards (один раз). */
 export async function migrateEquipmentFromRegulationsIfEmpty() {
   assertConfigured()

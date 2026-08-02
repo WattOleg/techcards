@@ -8,6 +8,7 @@ import ScheduleView from './ScheduleView'
 import ServerLinkDot from './ServerLinkDot'
 import WriteoffsView from './WriteoffsView'
 import UpdatesView from './UpdatesView'
+import EquipmentHub from './EquipmentHub'
 import {
   CATEGORY_TO_SECTION,
   SECTION_TO_CATEGORY,
@@ -22,9 +23,9 @@ const REGULATION_SECTION_IDS = [
   'rights',
   'requirements',
   'rights_and_duties',
-  'equipment_instructions',
 ]
 const CHECKLIST_SECTION_IDS = ['checklist-opening', 'checklist-closing']
+const EQUIPMENT_SECTION_ID = 'equipment_instructions'
 
 function ListView({
   cards,
@@ -216,21 +217,20 @@ function ListView({
   const activeMainSection = MAIN_TAB_IDS.includes(activeSection) ? activeSection : null
   const isRegulations = REGULATION_SECTION_IDS.includes(activeSection)
   const isChecklist = CHECKLIST_SECTION_IDS.includes(activeSection)
+  const isEquipment = activeSection === EQUIPMENT_SECTION_ID
   const isUpdates = activeSection === 'updates'
   const activeCategory = isRegulations
     ? SECTION_TO_CATEGORY[activeSection] || 'regulations'
     : 'regulations'
   const checklistType = isChecklist ? SECTION_TO_CHECKLIST_TYPE[activeSection] : null
   const checklistMeta = CHECKLIST_TYPES.find((t) => t.id === checklistType)
-  const showHeaderAdd = isRegulations || isChecklist
+  const showHeaderAdd = isRegulations || isChecklist || isEquipment
 
   const onHeaderAdd = () => {
-    if (isRegulations) {
-      if (activeCategory === 'equipment_instructions') {
-        regulations?.equipment?.onAddCard?.()
-      } else {
-        regulations?.onAddCard?.(activeCategory)
-      }
+    if (isEquipment) {
+      regulations?.equipment?.onAddCard?.()
+    } else if (isRegulations) {
+      regulations?.onAddCard?.(activeCategory)
     } else if (isChecklist) checklists?.onAddItem?.(checklistType)
   }
 
@@ -316,8 +316,18 @@ function ListView({
           onEditCard={regulations.onEditCard}
           loading={regulations.loading}
           error={regulations.error}
-          equipment={regulations.equipment}
-          focusTarget={menuFocus}
+          focusTarget={menuFocus?.kind === 'regulation' ? menuFocus : null}
+          onFocusConsumed={() => setMenuFocus(null)}
+        />
+      ) : null}
+
+      {isEquipment && regulations?.equipment ? (
+        <EquipmentHub
+          items={regulations.equipment.items}
+          loading={regulations.equipment.loading}
+          error={regulations.equipment.error}
+          onEditCard={regulations.equipment.onEditCard}
+          focusTarget={menuFocus?.kind === 'equipment' ? menuFocus : null}
           onFocusConsumed={() => setMenuFocus(null)}
         />
       ) : null}

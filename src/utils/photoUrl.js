@@ -49,50 +49,96 @@ export function getPhotoCandidates(rawUrl) {
   ]
 }
 
+function looksLikeUrl(value) {
+  const v = String(value || '').trim()
+  return /^https?:\/\//i.test(v) || /^data:image\//i.test(v)
+}
+
+/** Достаёт URL из битой JSON-строки / склейки (Sheets иногда портит кавычки). */
+function extractUrlsFromBlob(raw) {
+  const value = String(raw || '')
+  const found = value.match(/https?:\/\/[^\s"'<>\\]+/gi) || []
+  return found
+    .map((u) => u.replace(/[),.;]+$/g, '').trim())
+    .filter(looksLikeUrl)
+}
+
 /**
  * Читает список фото из поля Sheets `photoUrl` (строка / JSON-массив / несколько URL)
  * или из `photoUrls` на карточке.
  */
 export function parsePhotoUrls(raw) {
   if (Array.isArray(raw)) {
-    return raw.map((u) => normalizePhotoUrl(String(u || '').trim())).filter(Boolean)
+    // Не нормализуем весь массив как одну строку — каждый элемент отдельно.
+    const out = []
+    for (const item of raw) {
+      const part = parsePhotoUrls(item)
+      for (const url of part) {
+        if (!out.includes(url)) out.push(url)
+      }
+    }
+    return out
   }
+
   const value = String(raw || '').trim()
   if (!value) return []
 
+  // JSON-массив в ячейке Sheets
   if (value.startsWith('[')) {
     try {
       const arr = JSON.parse(value)
-      if (Array.isArray(arr)) {
-        return arr.map((u) => normalizePhotoUrl(String(u || '').trim())).filter(Boolean)
-      }
+      if (Array.isArray(arr)) return parsePhotoUrls(arr)
     } catch {
-      /* fall through */
+      const recovered = extractUrlsFromBlob(value).map(normalizePhotoUrl).filter(Boolean)
+      if (recovered.length) return recovered
     }
   }
 
-  if (value.includes('\n') || value.includes('|')) {
+  // Надёжный разделитель для Sheets (URL почти никогда не содержат |)
+  if (value.includes('|')) {
     return value
-      .split(/\n|\|/)
+      .split('|')
       .map((s) => normalizePhotoUrl(s.trim()))
       .filter(Boolean)
   }
 
-  return [normalizePhotoUrl(value)].filter(Boolean)
+  if (value.includes('\n')) {
+    return value
+      .split(/\r?\n/)
+      .map((s) => normalizePhotoUrl(s.trim()))
+      .filter(Boolean)
+  }
+
+  // Один URL
+  if (looksLikeUrl(value)) {
+    return [normalizePhotoUrl(value)].filter(Boolean)
+  }
+
+  const recovered = extractUrlsFromBlob(value).map(normalizePhotoUrl).filter(Boolean)
+  return recovered
 }
 
-/** Пишет в Sheets: 1 URL — как раньше; несколько — JSON-массив в том же столбце. */
+/**
+ * Пишет в Sheets: 1 URL — как раньше; несколько — через `|`
+ * (JSON в ячейках Sheets часто ломается → фото «пропадают»).
+ */
 export function serializePhotoUrls(urls) {
   const list = parsePhotoUrls(urls)
   if (list.length === 0) return ''
   if (list.length === 1) return list[0]
-  return JSON.stringify(list)
+  return list.join('|')
 }
 
 export function getCardPhotoUrls(card) {
   if (!card) return []
-  if (Array.isArray(card.photoUrls) && card.photoUrls.length > 0) {
-    return parsePhotoUrls(card.photoUrls)
+  // Склеиваем оба источника, чтобы локальный photoUrls не затирал Sheets photoUrl и наоборот.
+  const fromUrls = Array.isArray(card.photoUrls) ? parsePhotoUrls(card.photoUrls) : []
+  const fromField = parsePhotoUrls(card.photoUrl)
+  if (!fromUrls.length) return fromField
+  if (!fromField.length) return fromUrls
+  const out = [...fromUrls]
+  for (const url of fromField) {
+    if (!out.includes(url)) out.push(url)
   }
-  return parsePhotoUrls(card.photoUrl)
+  return out
 }

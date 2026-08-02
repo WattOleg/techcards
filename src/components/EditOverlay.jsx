@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getCardPhotoUrls, normalizePhotoUrl } from '../utils/photoUrl'
+import { getCardPhotoUrls, normalizePhotoUrl, parsePhotoUrls } from '../utils/photoUrl'
 
 function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   const [form, setForm] = useState(null)
@@ -12,7 +12,7 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
       const photoUrls = getCardPhotoUrls(card)
       setForm({
         ...card,
-        photoUrls: photoUrls.length ? photoUrls : [''],
+        photoUrls: photoUrls.length ? [...photoUrls] : [''],
       })
     }
     setSaved(false)
@@ -31,6 +31,21 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
       const next = [...(prev.photoUrls || [])]
       next[index] = value
       return { ...prev, photoUrls: next }
+    })
+  }
+
+  const commitPhotoAt = (index, raw) => {
+    const expanded = parsePhotoUrls(raw)
+    setForm((prev) => {
+      const current = [...(prev.photoUrls || [])]
+      if (expanded.length <= 1) {
+        current[index] = expanded[0] || normalizePhotoUrl(raw) || ''
+        return { ...prev, photoUrls: current }
+      }
+      // Вставили несколько URL в одно поле — разворачиваем в список, не затирая остальные.
+      const before = current.slice(0, index)
+      const after = current.slice(index + 1)
+      return { ...prev, photoUrls: [...before, ...expanded, ...after] }
     })
   }
 
@@ -141,7 +156,7 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
                 placeholder={`Фото ${index + 1}: https://…`}
                 value={url}
                 onChange={(e) => setPhotoAt(index, e.target.value)}
-                onBlur={(e) => setPhotoAt(index, normalizePhotoUrl(e.target.value))}
+                onBlur={(e) => commitPhotoAt(index, e.target.value)}
               />
               <button type="button" className="ghost-btn" onClick={() => removePhoto(index)}>
                 Удалить

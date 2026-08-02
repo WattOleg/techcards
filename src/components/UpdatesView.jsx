@@ -44,6 +44,7 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
   const [progress, setProgress] = useState(0)
   const timerRef = useRef(null)
   const touchX = useRef(null)
+  const touchY = useRef(null)
   const item = items[index]
   const durationMs = 4500
 
@@ -92,54 +93,72 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
       aria-label="Сторис"
       onTouchStart={(e) => {
         touchX.current = e.touches[0]?.clientX ?? null
+        touchY.current = e.touches[0]?.clientY ?? null
       }}
       onTouchEnd={(e) => {
-        const start = touchX.current
+        const startX = touchX.current
+        const startY = touchY.current
         touchX.current = null
-        if (start == null) return
-        const dx = (e.changedTouches[0]?.clientX ?? start) - start
+        touchY.current = null
+        if (startX == null || startY == null) return
+        const endX = e.changedTouches[0]?.clientX ?? startX
+        const endY = e.changedTouches[0]?.clientY ?? startY
+        const dx = endX - startX
+        const dy = endY - startY
+        if (dy > 80 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+          onClose?.()
+          return
+        }
         if (Math.abs(dx) < 48) return
         if (dx > 0) goPrev()
         else goNext()
       }}
     >
-      <div className="stories-viewer-bars">
-        {items.map((it, i) => (
-          <div key={it.id} className="stories-viewer-bar">
-            <div
-              className="stories-viewer-bar-fill"
-              style={{
-                width: i < index ? '100%' : i === index ? `${progress * 100}%` : '0%',
-              }}
-            />
+      <div className="stories-viewer-chrome">
+        <div className="stories-viewer-bars">
+          {items.map((it, i) => (
+            <div key={it.id} className="stories-viewer-bar">
+              <div
+                className="stories-viewer-bar-fill"
+                style={{
+                  width: i < index ? '100%' : i === index ? `${progress * 100}%` : '0%',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="stories-viewer-top">
+          <div className="stories-viewer-meta">
+            <span className="stories-viewer-label">{item.label || item.subtitle || ''}</span>
+            <strong>{item.title}</strong>
+            <span className="stories-viewer-date">{formatRuDate(item.updatedAt || item.createdAt)}</span>
           </div>
-        ))}
+          <div className="stories-viewer-actions">
+            {onEdit && item.rawPost ? (
+              <button
+                type="button"
+                className="stories-viewer-edit"
+                onClick={() => {
+                  onClose?.()
+                  onEdit(item.rawPost)
+                }}
+              >
+                Изменить
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
 
-      <div className="stories-viewer-top">
-        <div className="stories-viewer-meta">
-          <span className="stories-viewer-label">{item.label || item.subtitle || ''}</span>
-          <strong>{item.title}</strong>
-          <span className="stories-viewer-date">{formatRuDate(item.updatedAt || item.createdAt)}</span>
-        </div>
-        <div className="stories-viewer-actions">
-          {onEdit && item.rawPost ? (
-            <button
-              type="button"
-              className="stories-viewer-edit"
-              onClick={() => {
-                onClose?.()
-                onEdit(item.rawPost)
-              }}
-            >
-              Изменить
-            </button>
-          ) : null}
-          <button type="button" className="stories-viewer-close" onClick={onClose} aria-label="Закрыть">
-            ✕
-          </button>
-        </div>
-      </div>
+      <button
+        type="button"
+        className="stories-viewer-close"
+        onClick={onClose}
+        aria-label="Закрыть"
+      >
+        ✕
+      </button>
 
       <div className="stories-viewer-body">
         {imageUrl ? (
