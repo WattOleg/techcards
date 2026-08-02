@@ -1458,13 +1458,11 @@ h1 {
 .stories-ring {
   width: 68px;
   height: 68px;
-  border-radius: 999px;
-  padding: 3px;
-  background: linear-gradient(135deg, #f59e0b, #ef4444 45%, #8b5cf6);
-  display: block;
+  border-radius: 50%;
+  padding: 2.5px;
   box-sizing: border-box;
   flex-shrink: 0;
-  overflow: hidden;
+  background: linear-gradient(135deg, #f59e0b, #ef4444 45%, #8b5cf6);
 }
 
 .stories-ring.tone-reg {
@@ -1487,13 +1485,24 @@ h1 {
   background: linear-gradient(135deg, #818cf8, #4f46e5 50%, #312e81);
 }
 
-.stories-ring > img {
+/* Внутренний «зазор» + идеальный круг под фото (как в Instagram) */
+.stories-ring-inner {
   display: block;
   width: 100%;
   height: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 999px;
-  border: 2px solid var(--bg);
+  border-radius: 50%;
+  box-sizing: border-box;
+  padding: 2.5px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.stories-ring-inner > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 50%;
   object-fit: cover;
   object-position: center center;
   background: #1f2937;
@@ -1504,9 +1513,7 @@ h1 {
   place-items: center;
   width: 100%;
   height: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 999px;
-  border: 2px solid var(--bg);
+  border-radius: 50%;
   background: #1f2937;
   color: #fff;
   font-size: 22px;

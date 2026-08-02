@@ -204,11 +204,13 @@ function StoriesRail({ title, hint, items, emptyText, onOpen, action }) {
                 onClick={() => onOpen(index)}
               >
                 <span className={`stories-ring ${kindTone(item.kind)}`}>
-                  {img ? (
-                    <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span className="stories-avatar-letter">{initialLetter(item.title)}</span>
-                  )}
+                  <span className="stories-ring-inner">
+                    {img ? (
+                      <img src={img} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                    ) : (
+                      <span className="stories-avatar-letter">{initialLetter(item.title)}</span>
+                    )}
+                  </span>
                 </span>
                 <span className="stories-bubble-title">{item.title}</span>
                 <span className="stories-bubble-date">{formatShortDate(item.updatedAt || item.createdAt)}</span>
