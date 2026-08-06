@@ -16,7 +16,7 @@ var WRITE_TPL_SHEET_NAMES = ['_WRITE_TPL', '_WRITE_TPL_']
 
 function doGet(e) {
   const action = e.parameter.action
-  if (action === 'getList') return getList()
+  if (action === 'getList') return getList(e.parameter)
   if (action === 'getCard') return getCard(e.parameter.sheetName)
   if (action === 'getAll') return getAll()
   if (action === 'getSections') return getSections()
@@ -632,11 +632,17 @@ function getAll() {
   return jsonResponse({ cards })
 }
 
-function getList() {
+function getList(params) {
   const cache = CacheService.getScriptCache()
-  const cached = cache.get(LIST_CACHE_KEY)
-  if (cached) {
-    return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON)
+  // _cb / force / nocache — обход CacheService при ручном «Обновить» с клиента.
+  const bypassCache = Boolean(
+    params && (params._cb || params.force === '1' || params.nocache === '1'),
+  )
+  if (!bypassCache) {
+    const cached = cache.get(LIST_CACHE_KEY)
+    if (cached) {
+      return ContentService.createTextOutput(cached).setMimeType(ContentService.MimeType.JSON)
+    }
   }
 
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID)

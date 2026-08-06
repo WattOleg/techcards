@@ -2166,17 +2166,20 @@ body.stories-open .app-drawer-root {
   bottom: 12px;
   transform: translateX(-50%);
   display: flex;
+  align-items: center;
   gap: 6px;
   z-index: 2;
   pointer-events: none;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
 }
 
 .photo-gallery-dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.55);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .photo-gallery-dot.is-active {

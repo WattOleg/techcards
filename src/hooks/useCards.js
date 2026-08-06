@@ -37,6 +37,17 @@ async function fetchListWithTimeout(fetchOpts = {}) {
   }
 }
 
+async function fetchAllWithTimeout(fetchOpts = {}) {
+  const controller = new AbortController()
+  // getAll тяжелее списка — даём чуть больше времени.
+  const timer = setTimeout(() => controller.abort(), Math.max(getFetchTimeoutMs(), 12000))
+  try {
+    return await fetchAllCards({ ...fetchOpts, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Сеть сразу (без паузы на старте).
  * Пауза + повтор — только если запрос упал при online (handoff Wi‑Fi→LTE).
@@ -62,7 +73,8 @@ export function useCards() {
 
   const loadCards = useCallback(async (opts = {}) => {
     const forceNetwork = Boolean(opts.forceNetwork)
-    const silent = Boolean(opts.silent) || hasCacheRef.current
+    // Явный silent:false (кнопка 🔄) не перекрываем наличием локального кэша.
+    const silent = opts.silent !== undefined ? Boolean(opts.silent) : hasCacheRef.current
     const gen = ++refreshGen.current
 
     try {
@@ -72,11 +84,22 @@ export function useCards() {
       }
 
       let nextCards
+      let gotFullFromNetwork = false
       try {
-        nextCards = await fetchListFromNetwork(forceNetwork)
+        // Кнопка 🔄: полные карточки с сервера (getAll, без CacheService / localStorage).
+        if (forceNetwork && !silent) {
+          try {
+            nextCards = await fetchAllWithTimeout({ forceNetwork: true, networkOnly: true })
+            gotFullFromNetwork = true
+          } catch {
+            nextCards = await fetchListFromNetwork(true)
+          }
+        } else {
+          nextCards = await fetchListFromNetwork(forceNetwork)
+        }
       } catch (err) {
-        if (hasCacheRef.current) {
-          // Уже показали кэш — не пугаем ошибкой при фоновом обновлении.
+        // forceNetwork — только сеть, без подмены ответом из localStorage.
+        if (forceNetwork || hasCacheRef.current) {
           if (!silent) setError(err.message || 'Не удалось загрузить позиции')
           return
         }
@@ -88,20 +111,22 @@ export function useCards() {
       setCards(nextCards)
       setError('')
 
-      // Полные техкарты — после списка, без блокировки UI.
-      window.setTimeout(() => {
-        void (async () => {
-          try {
-            const full = await fetchAllCards({ forceNetwork, networkOnly: true })
-            if (gen !== refreshGen.current) return
-            if (!Array.isArray(full) || full.length === 0) return
-            const byId = new Map(full.map((c) => [c.sheetName, c]))
-            setCards((prev) => prev.map((c) => byId.get(c.sheetName) || c))
-          } catch {
-            /* список уже на экране */
-          }
-        })()
-      }, 350)
+      // Полные техкарты — после списка, без блокировки UI (если ещё не тянули getAll).
+      if (!gotFullFromNetwork) {
+        window.setTimeout(() => {
+          void (async () => {
+            try {
+              const full = await fetchAllCards({ forceNetwork, networkOnly: true })
+              if (gen !== refreshGen.current) return
+              if (!Array.isArray(full) || full.length === 0) return
+              const byId = new Map(full.map((c) => [c.sheetName, c]))
+              setCards((prev) => prev.map((c) => byId.get(c.sheetName) || c))
+            } catch {
+              /* список уже на экране */
+            }
+          })()
+        }, 350)
+      }
     } catch (err) {
       if (gen !== refreshGen.current) return
       if (!silent) setError(err.message || 'Не удалось загрузить позиции')
