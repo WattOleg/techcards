@@ -33,6 +33,7 @@ export default function PhotoGallery({ urls = [], alt = '', topSlot = null }) {
   const [activeIndex, setActiveIndex] = useState(0)
   const list = Array.isArray(urls) ? urls.filter(Boolean) : []
   const key = list.join('|')
+  const multi = list.length > 1
 
   useEffect(() => {
     setActiveIndex(0)
@@ -55,40 +56,48 @@ export default function PhotoGallery({ urls = [], alt = '', topSlot = null }) {
 
   if (list.length === 0) {
     return (
-      <div className="hero photo-gallery">
-        <div className="hero-placeholder">🍹</div>
-        {topSlot}
+      <div className="photo-gallery-wrap">
+        <div className="hero photo-gallery">
+          <div className="hero-placeholder">🍹</div>
+          {topSlot}
+        </div>
       </div>
     )
   }
 
-  if (list.length === 1) {
+  if (!multi) {
     return (
-      <div className="hero photo-gallery">
-        <GallerySlide url={list[0]} alt={alt} />
-        {topSlot}
+      <div className="photo-gallery-wrap">
+        <div className="hero photo-gallery">
+          <GallerySlide url={list[0]} alt={alt} />
+          {topSlot}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="hero photo-gallery photo-gallery-multi">
-      <div ref={trackRef} className="photo-gallery-track" aria-label="Фотографии">
-        {list.map((url, i) => (
-          <div key={`${i}-${url}`} className="photo-gallery-slide" aria-hidden={i !== activeIndex}>
-            <GallerySlide url={url} alt={`${alt} (${i + 1})`} />
-          </div>
-        ))}
+    <div className="photo-gallery-wrap photo-gallery-wrap-multi">
+      <div className="hero photo-gallery photo-gallery-multi">
+        <div ref={trackRef} className="photo-gallery-track" aria-label="Фотографии">
+          {list.map((url, i) => (
+            <div key={`${i}-${url}`} className="photo-gallery-slide" aria-hidden={i !== activeIndex}>
+              <GallerySlide url={url} alt={`${alt} (${i + 1})`} />
+            </div>
+          ))}
+        </div>
+        {topSlot}
       </div>
-      <div className="photo-gallery-dots" aria-hidden>
-        {list.map((_, i) => (
-          <span key={i} className={`photo-gallery-dot${i === activeIndex ? ' is-active' : ''}`} />
-        ))}
+      <div className="photo-gallery-indicators" aria-label={`Фото ${activeIndex + 1} из ${list.length}`}>
+        <div className="photo-gallery-dots" aria-hidden>
+          {list.map((_, i) => (
+            <span key={i} className={`photo-gallery-dot${i === activeIndex ? ' is-active' : ''}`} />
+          ))}
+        </div>
+        <span className="photo-gallery-count">
+          {activeIndex + 1}/{list.length}
+        </span>
       </div>
-      <div className="photo-gallery-count">
-        {activeIndex + 1} / {list.length}
-      </div>
-      {topSlot}
     </div>
   )
 }

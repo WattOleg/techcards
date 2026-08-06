@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'tk-static-v6'
-const RUNTIME_CACHE = 'tk-runtime-v6'
+const STATIC_CACHE = 'tk-static-v7'
+const RUNTIME_CACHE = 'tk-runtime-v7'
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/e-Bar.png']
 
 self.addEventListener('install', (event) => {

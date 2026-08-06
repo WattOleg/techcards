@@ -377,7 +377,7 @@ export default function UpdatesView({
           <input
             value={authorName}
             onChange={(e) => setAuthorName(e.target.value)}
-            placeholder="Ваше имя"
+            placeholder="Заголовок"
           />
           <textarea
             value={commentText}

@@ -102,11 +102,23 @@ export function parsePhotoUrls(raw) {
       .filter(Boolean)
   }
 
-  if (value.includes('\n')) {
+  if (value.includes('\n') || value.includes(';')) {
     return value
-      .split(/\r?\n/)
+      .split(/[\n;]+/)
       .map((s) => normalizePhotoUrl(s.trim()))
       .filter(Boolean)
+  }
+
+  // Несколько URL в одной строке (через пробел/запятую) — до short-circuit «один URL»
+  const embedded = extractUrlsFromBlob(value)
+    .map(normalizePhotoUrl)
+    .filter(Boolean)
+  if (embedded.length > 1) {
+    const unique = []
+    for (const url of embedded) {
+      if (!unique.includes(url)) unique.push(url)
+    }
+    return unique
   }
 
   // Один URL
@@ -114,8 +126,7 @@ export function parsePhotoUrls(raw) {
     return [normalizePhotoUrl(value)].filter(Boolean)
   }
 
-  const recovered = extractUrlsFromBlob(value).map(normalizePhotoUrl).filter(Boolean)
-  return recovered
+  return embedded
 }
 
 /**

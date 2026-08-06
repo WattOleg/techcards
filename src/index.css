@@ -2117,6 +2117,11 @@ body.stories-open .app-drawer-root {
 .tag-gray { background: var(--surface2); }
 .chevron { color: var(--text3); font-size: 20px; }
 
+.photo-gallery-wrap {
+  display: grid;
+  gap: 8px;
+}
+
 .hero {
   position: relative;
   border-radius: var(--radius-card);
@@ -2160,26 +2165,34 @@ body.stories-open .app-drawer-root {
   user-select: none;
 }
 
+/* Под фото — не на белой картинке, всегда читается */
+.photo-gallery-indicators {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 28px;
+  padding: 5px 12px;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  background: #111;
+  color: #fff;
+  pointer-events: none;
+}
+
 .photo-gallery-dots {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 6px;
-  z-index: 2;
-  pointer-events: none;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.72);
 }
 
 .photo-gallery-dot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .photo-gallery-dot.is-active {
@@ -2188,16 +2201,11 @@ body.stories-open .app-drawer-root {
 }
 
 .photo-gallery-count {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  z-index: 2;
   font-size: 12px;
   font-weight: 700;
   color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   font-variant-numeric: tabular-nums;
-  pointer-events: none;
+  letter-spacing: 0.02em;
 }
 
 .photo-url-list {
