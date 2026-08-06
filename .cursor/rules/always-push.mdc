@@ -1,0 +1,14 @@
+---
+description: Always commit and push to git immediately after finishing changes
+alwaysApply: true
+---
+
+# Always push to git
+
+After completing any code change the user asked for:
+
+1. Create a git commit (follow the repo commit protocol / HEREDOC message).
+2. Immediately `git push` to `origin` on the current branch — do not wait for the user to ask.
+3. Tell the user the commit hash / that it was pushed.
+
+Do this by default for this project unless the user explicitly says not to commit or not to push.
