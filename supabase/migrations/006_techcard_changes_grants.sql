@@ -1,5 +1,5 @@
--- Журнал изменений техкарт (Sheets) для блока «Изменения» в Актуальном.
--- Run in Supabase SQL Editor.
+-- Гарантирует таблицу журнала техкарт + права для anon/authenticated.
+-- Run in Supabase SQL Editor, если «Изменения» не показывают правки техкарт.
 
 begin;
 

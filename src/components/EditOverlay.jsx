@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getCardPhotoUrls, normalizePhotoUrl, parsePhotoUrls } from '../utils/photoUrl'
 
-function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
+function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, onSave, onDelete }) {
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -13,6 +13,11 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
       setForm({
         ...card,
         photoUrls: photoUrls.length ? [...photoUrls] : [''],
+        ingredients: (card.ingredients || []).map((ing) => ({
+          name: ing.name || '',
+          amount: ing.amount || '',
+          linkedSheetName: ing.linkedSheetName || '',
+        })),
       })
     }
     setSaved(false)
@@ -21,6 +26,14 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   }, [card, isOpen])
 
   if (!form) return null
+
+  const currentSheet = String(form.sheetName || '').trim()
+  const linkOptions = (linkableCards || [])
+    .filter((c) => c?.sheetName && c.sheetName !== currentSheet)
+    .slice()
+    .sort((a, b) =>
+      String(a.name || a.sheetName).localeCompare(String(b.name || b.sheetName), 'ru'),
+    )
 
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -74,7 +87,7 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
   const addIngredient = () => {
     setForm((prev) => ({
       ...prev,
-      ingredients: [...(prev.ingredients || []), { name: '', amount: '' }],
+      ingredients: [...(prev.ingredients || []), { name: '', amount: '', linkedSheetName: '' }],
     }))
   }
 
@@ -176,6 +189,9 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
             + Добавить
           </button>
         </div>
+        <p className="muted small ing-link-hint">
+          Можно привязать ингредиент к другой техкарте — в карточке название станет ссылкой.
+        </p>
         <div className="ing-list">
           {(form.ingredients || []).map((ing, index) => (
             <div key={index} className="ing-item">
@@ -192,6 +208,21 @@ function EditOverlay({ isOpen, card, categories, onClose, onSave, onDelete }) {
               <button type="button" className="ghost-btn" onClick={() => removeIngredient(index)}>
                 Удалить
               </button>
+              <label className="ing-link-field">
+                <span className="muted small">Ссылка на техкарту</span>
+                <select
+                  value={ing.linkedSheetName || ''}
+                  onChange={(e) => setIngredient(index, 'linkedSheetName', e.target.value)}
+                >
+                  <option value="">Без ссылки</option>
+                  {linkOptions.map((c) => (
+                    <option key={c.sheetName} value={c.sheetName}>
+                      {c.name || c.nameRu || c.sheetName}
+                      {c.category ? ` · ${c.category}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           ))}
         </div>

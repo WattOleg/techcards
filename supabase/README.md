@@ -34,11 +34,23 @@ Already set in `.env` / `.env.production`:
 VITE_OPS_BACKEND=supabase
 ```
 
-## 4. Apps Script freeze
+## 6. Актуальное → «Изменения» (техкарты)
+
+Если правки техкарт не появляются в ряду **Изменения**:
+
+1. Supabase → SQL Editor
+2. Вставьте `supabase/migrations/006_techcard_changes_grants.sql` → Run
+3. Сохраните техкарту ещё раз через приложение
+
+Правки техкарт пишутся в таблицу `techcard_changes` (не в ручной ряд «Актуальное»).
+
+## 7. Apps Script freeze
 
 `Code.gs` has `OPS_MOVED_TO_SUPABASE = true` — write/update/delete for writeoffs & stop list return an error. Redeploy Apps Script after pull.
 
-## 5. Rollback
+Для ссылок между техкартами (колонка C у ингредиентов) тоже нужен redeploy Apps Script после обновления `Code.gs`.
+
+## 8. Rollback
 
 Set `VITE_OPS_BACKEND=sheets` and redeploy the web app. Sheets data remains as archive (read still works via GAS get*).
 Regulations stay in Supabase independently.

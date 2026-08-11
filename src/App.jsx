@@ -84,7 +84,7 @@ function makeEmptyCard() {
     author: '',
     date: today,
     technology: '',
-    ingredients: [{ name: '', amount: '' }],
+    ingredients: [{ name: '', amount: '', linkedSheetName: '' }],
   }
 }
 
@@ -228,6 +228,8 @@ function App() {
   const [shiftComments, setShiftComments] = useState([])
   const [updatesLoading, setUpdatesLoading] = useState(false)
   const [updatesError, setUpdatesError] = useState('')
+  const [updatesTechcardsWarning, setUpdatesTechcardsWarning] = useState('')
+  const [detailStack, setDetailStack] = useState([])
   const [commentSaving, setCommentSaving] = useState(false)
   const [updatePostEditor, setUpdatePostEditor] = useState({
     open: false,
@@ -421,13 +423,15 @@ function App() {
     try {
       setUpdatesLoading(true)
       setUpdatesError('')
-      const [recent, news, current, comments] = await Promise.all([
+      setUpdatesTechcardsWarning('')
+      const [recentResult, news, current, comments] = await Promise.all([
         fetchRecentChanges(7),
         fetchNews(),
         fetchCurrentUpdates(),
         fetchShiftComments(),
       ])
-      setUpdatesRecent(recent)
+      setUpdatesRecent(recentResult?.items || [])
+      setUpdatesTechcardsWarning(recentResult?.techcardsWarning || '')
       setUpdatesNews(news)
       setUpdatesCurrent(current)
       setShiftComments(comments)
@@ -533,22 +537,6 @@ function App() {
     return () => window.removeEventListener(VISIT_EVENT, onVisit)
   }, [])
 
-  // Системная «Назад» / жест браузера ↔ закрытие карточки.
-  useEffect(() => {
-    const onPopState = () => {
-      if (closingFromUiRef.current) {
-        closingFromUiRef.current = false
-        return
-      }
-      setView('list')
-      setEditOpen(false)
-      setSwipeOffset(0)
-      setSwipeDragging(false)
-    }
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [])
-
   const ensureFullCard = async (card) => {
     if (!card || !card.isPartial) return card
     const detailed = await fetchCardDetail(card.sheetName)
@@ -572,36 +560,97 @@ function App() {
     await exportCardToPdf(fullCard)
   }
 
-  const openDetail = async (cardId) => {
-    setSelectedId(cardId)
-    setView('detail')
-    setSwipeOffset(0)
-    setSwipeDragging(false)
-    if (typeof window !== 'undefined' && window.history.state?.tk !== 'detail') {
-      window.history.pushState({ ...DETAIL_HISTORY, id: cardId }, '')
+  const loadCardIntoDetail = useCallback(
+    async (cardId) => {
+      setSelectedId(cardId)
+      setView('detail')
+      setSwipeOffset(0)
+      setSwipeDragging(false)
+      const base = cards.find((card) => card.sheetName === cardId)
+      if (!base || base.isPartial) {
+        setDetailLoading(true)
+        try {
+          const detailed = await fetchCardDetail(cardId)
+          if (detailed) updateLocalCard(detailed)
+        } finally {
+          setDetailLoading(false)
+        }
+      }
+    },
+    [cards, updateLocalCard],
+  )
+
+  const openDetail = async (cardId, { fromLink = false } = {}) => {
+    if (fromLink) {
+      setDetailStack((prev) => (prev.length ? [...prev, cardId] : [cardId]))
+    } else {
+      setDetailStack([cardId])
     }
-    const base = cards.find((card) => card.sheetName === cardId)
-    if (base?.isPartial) {
-      setDetailLoading(true)
-      try {
-        const detailed = await fetchCardDetail(cardId)
-        if (detailed) updateLocalCard(detailed)
-      } finally {
-        setDetailLoading(false)
+    if (typeof window !== 'undefined') {
+      const alreadyDetail = window.history.state?.tk === 'detail'
+      if (!alreadyDetail || fromLink) {
+        window.history.pushState({ ...DETAIL_HISTORY, id: cardId }, '')
+      } else if (window.history.state?.id !== cardId) {
+        window.history.replaceState({ ...DETAIL_HISTORY, id: cardId }, '')
       }
     }
+    await loadCardIntoDetail(cardId)
   }
 
   const closeDetail = useCallback(() => {
-    setView('list')
     setEditOpen(false)
     setSwipeOffset(0)
     setSwipeDragging(false)
-    if (typeof window !== 'undefined' && window.history.state?.tk === 'detail') {
-      closingFromUiRef.current = true
-      window.history.back()
+
+    setDetailStack((prev) => {
+      if (prev.length > 1) {
+        const next = prev.slice(0, -1)
+        const prevId = next[next.length - 1]
+        if (typeof window !== 'undefined' && window.history.state?.tk === 'detail') {
+          closingFromUiRef.current = true
+          window.history.back()
+        }
+        queueMicrotask(() => {
+          void loadCardIntoDetail(prevId)
+        })
+        return next
+      }
+
+      setView('list')
+      if (typeof window !== 'undefined' && window.history.state?.tk === 'detail') {
+        closingFromUiRef.current = true
+        window.history.back()
+      }
+      return []
+    })
+  }, [loadCardIntoDetail])
+
+  // Системная «Назад» / жест браузера ↔ закрытие карточки / возврат по ссылке.
+  useEffect(() => {
+    const onPopState = () => {
+      if (closingFromUiRef.current) {
+        closingFromUiRef.current = false
+        return
+      }
+      const state = window.history.state
+      if (state?.tk === 'detail' && state?.id) {
+        setDetailStack((prev) => {
+          const idx = prev.lastIndexOf(state.id)
+          if (idx >= 0) return prev.slice(0, idx + 1)
+          return [state.id]
+        })
+        void loadCardIntoDetail(state.id)
+        return
+      }
+      setDetailStack([])
+      setView('list')
+      setEditOpen(false)
+      setSwipeOffset(0)
+      setSwipeDragging(false)
     }
-  }, [])
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [loadCardIntoDetail])
 
   const detailScreenRef = useRef(null)
 
@@ -811,6 +860,11 @@ function App() {
       ...nextCard,
       photoUrl: serializePhotoUrls(photoUrls),
       date: todayRu,
+      ingredients: (nextCard.ingredients || []).map((ing) => ({
+        name: ing.name || '',
+        amount: ing.amount || '',
+        linkedSheetName: ing.linkedSheetName || '',
+      })),
     }
     delete preparedCard.photoUrls
     const isCreate = !selectedCard || draftCard !== null
@@ -822,13 +876,31 @@ function App() {
       await createCard(preparedCard, import.meta.env.VITE_PIN_CODE)
       addLocalCard({ ...preparedCard, photoUrls })
       setSelectedId(preparedCard.sheetName)
+      setDetailStack([preparedCard.sheetName])
       setView('detail')
       setDraftCard(null)
     } else {
       await updateCard(preparedCard.sheetName, preparedCard, import.meta.env.VITE_PIN_CODE)
       updateLocalCard({ ...preparedCard, photoUrls })
     }
-    void logTechcardChange({ ...preparedCard, photoUrls })
+    try {
+      const logged = await logTechcardChange({ ...preparedCard, photoUrls })
+      if (logged) {
+        setUpdatesRecent((prev) => {
+          const without = prev.filter((item) => item.id !== logged.id)
+          return [logged, ...without].sort((a, b) =>
+            String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')),
+          )
+        })
+        setUpdatesTechcardsWarning('')
+      }
+    } catch (err) {
+      console.error(err)
+      setUpdatesTechcardsWarning(
+        err.message ||
+          'Техкарта сохранена, но не попала в «Изменения». Проверьте миграцию techcard_changes.',
+      )
+    }
     setEditOpen(false)
   }
 
@@ -1207,6 +1279,7 @@ function App() {
               comments: shiftComments,
               loading: updatesLoading,
               error: updatesError,
+              techcardsWarning: updatesTechcardsWarning,
               onReload: loadUpdatesFeed,
               onRequestAddNews: () => requestUpdatePostAdd('news'),
               onRequestEditNews: (post) => requestUpdatePostEdit('news', post),
@@ -1272,6 +1345,7 @@ function App() {
             onBack={closeDetail}
             onEdit={() => requestAction('edit')}
             onExport={exportOneCard}
+            onOpenLinkedCard={(sheetName) => openDetail(sheetName, { fromLink: true })}
           />
         </section>
       </div>
@@ -1280,6 +1354,7 @@ function App() {
         isOpen={editOpen}
         card={draftCard || selectedCard}
         categories={categories}
+        linkableCards={cards}
         onClose={() => {
           setEditOpen(false)
           setDraftCard(null)

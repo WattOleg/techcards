@@ -2,7 +2,7 @@ import PhotoGallery from './PhotoGallery'
 import ServerLinkDot from './ServerLinkDot'
 import { getCardPhotoUrls } from '../utils/photoUrl'
 
-function DetailView({ card, loading, onBack, onEdit, onExport }) {
+function DetailView({ card, loading, onBack, onEdit, onExport, onOpenLinkedCard }) {
   if (!card) {
     return (
       <div className="view detail-view">
@@ -61,12 +61,26 @@ function DetailView({ card, loading, onBack, onEdit, onExport }) {
         <h3>Ингредиенты</h3>
         {loading ? <p className="muted">Загружаю детали...</p> : null}
         <div className="ingredient-list">
-          {card.ingredients?.map((ing, idx) => (
-            <div key={`${ing.name}-${idx}`} className="ingredient-row">
-              <span>{ing.name}</span>
-              <strong>{ing.amount}</strong>
-            </div>
-          ))}
+          {card.ingredients?.map((ing, idx) => {
+            const linked = String(ing.linkedSheetName || '').trim()
+            const canOpen = Boolean(linked && typeof onOpenLinkedCard === 'function')
+            return (
+              <div key={`${ing.name}-${idx}`} className="ingredient-row">
+                {canOpen ? (
+                  <button
+                    type="button"
+                    className="ingredient-link"
+                    onClick={() => onOpenLinkedCard(linked)}
+                  >
+                    {ing.name}
+                  </button>
+                ) : (
+                  <span>{ing.name}</span>
+                )}
+                <strong>{ing.amount}</strong>
+              </div>
+            )
+          })}
         </div>
       </section>
 

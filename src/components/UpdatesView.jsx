@@ -253,6 +253,7 @@ export default function UpdatesView({
   comments = [],
   loading,
   error,
+  techcardsWarning,
   onReload,
   onRequestAddNews,
   onRequestEditNews,
@@ -331,6 +332,7 @@ export default function UpdatesView({
         </button>
       </div>
       {error ? <p className="error">{error}</p> : null}
+      {techcardsWarning ? <p className="error updates-techcards-warning">{techcardsWarning}</p> : null}
 
       <StoriesRail
         title="Изменения"

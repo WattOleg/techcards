@@ -351,6 +351,7 @@ function ListView({
           comments={updates.comments}
           loading={updates.loading}
           error={updates.error}
+          techcardsWarning={updates.techcardsWarning}
           onReload={updates.onReload}
           onRequestAddNews={updates.onRequestAddNews}
           onRequestEditNews={updates.onRequestEditNews}

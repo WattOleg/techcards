@@ -81,14 +81,21 @@ export async function fetchRecentChanges(days = 7) {
   if (regs.error) throwSb(regs.error, 'Не удалось загрузить изменения регламентов')
   if (equipment.error) throwSb(equipment.error, 'Не удалось загрузить изменения оборудования')
   if (checklists.error) throwSb(checklists.error, 'Не удалось загрузить изменения чек-листов')
-  // Таблица могла ещё не быть создана — не валим весь фид.
+
+  let techcardsWarning = ''
   if (techcards.error) {
     const msg = String(techcards.error.message || '')
     const missing =
       techcards.error.code === '42P01' ||
       techcards.error.code === 'PGRST205' ||
       /techcard_changes|schema cache|does not exist/i.test(msg)
-    if (!missing) throwSb(techcards.error, 'Не удалось загрузить изменения техкарт')
+    if (missing) {
+      techcardsWarning =
+        'Таблица techcard_changes не найдена. Примените миграцию supabase/migrations/006_techcard_changes_grants.sql в Supabase SQL Editor.'
+      console.error('TECHCARD CHANGES MISSING:', msg)
+    } else {
+      throwSb(techcards.error, 'Не удалось загрузить изменения техкарт')
+    }
   }
   reportServerReachable()
 
@@ -133,12 +140,30 @@ export async function fetchRecentChanges(days = 7) {
   }
 
   items.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-  return items
+  return { items, techcardsWarning }
+}
+
+function mapLoggedTechcard(row) {
+  if (!row) return null
+  return {
+    id: `tc-${row.sheet_name}`,
+    kind: 'techcard',
+    label: row.category ? `Техкарта · ${row.category}` : 'Техкарта',
+    title: row.title || row.sheet_name || 'Без названия',
+    imageUrl: row.photo_url || '',
+    updatedAt: row.updated_at,
+    sheetName: row.sheet_name,
+  }
 }
 
 /** Фиксирует правку техкарты (фото, граммовка и т.д.) для блока «Изменения». */
 export async function logTechcardChange(card) {
-  if (!isSupabaseConfigured || !card?.sheetName) return null
+  if (!isSupabaseConfigured) {
+    throw new Error('Supabase не настроен — изменение техкарты не попадёт в «Изменения»')
+  }
+  if (!card?.sheetName) {
+    throw new Error('Нет sheetName — не удалось записать изменение техкарты')
+  }
   const photos = parsePhotoUrls(card.photoUrls ?? card.photoUrl)
   const payload = {
     sheet_name: String(card.sheetName).trim(),
@@ -153,11 +178,21 @@ export async function logTechcardChange(card) {
     .select('*')
     .single()
   if (error) {
-    console.warn('TECHCARD CHANGE LOG:', error.message)
-    return null
+    const msg = String(error.message || '')
+    const missing =
+      error.code === '42P01' ||
+      error.code === 'PGRST205' ||
+      /techcard_changes|schema cache|does not exist/i.test(msg)
+    if (missing) {
+      throw new Error(
+        'Таблица techcard_changes не создана. Примените миграцию 006_techcard_changes_grants.sql в Supabase.',
+      )
+    }
+    console.error('TECHCARD CHANGE LOG:', error)
+    throw new Error(msg || 'Не удалось записать изменение техкарты в «Изменения»')
   }
   reportServerReachable()
-  return data
+  return mapLoggedTechcard(data)
 }
 
 async function fetchPosts(table) {

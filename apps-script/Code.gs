@@ -691,9 +691,16 @@ function parseSheet(sheet, includeDetails) {
     const ingredients = []
     const lastRow = sheet.getLastRow()
     if (lastRow >= 14) {
-      const ingredientRange = sheet.getRange(14, 1, lastRow - 13, 2).getValues()
+      // A=name, B=amount, C=linkedSheetName (ссылка на другую техкарту)
+      const ingredientRange = sheet.getRange(14, 1, lastRow - 13, 3).getValues()
       ingredientRange.forEach((row) => {
-        if (row[0]) ingredients.push({ name: row[0], amount: row[1] || '' })
+        if (row[0]) {
+          ingredients.push({
+            name: row[0],
+            amount: row[1] || '',
+            linkedSheetName: row[2] ? String(row[2]).trim() : '',
+          })
+        }
       })
     }
     card.ingredients = ingredients
@@ -721,10 +728,11 @@ function updateSheet(body) {
   set(10, d.author)
   set(11, d.date)
   set(12, d.technology)
-  sheet.getRange(14, 1, 50, 2).clearContent()
+  sheet.getRange(14, 1, 50, 3).clearContent()
   ;(d.ingredients || []).forEach((ing, i) => {
     sheet.getRange(14 + i, 1).setValue(ing.name || '')
     sheet.getRange(14 + i, 2).setValue(ing.amount || '')
+    sheet.getRange(14 + i, 3).setValue(ing.linkedSheetName || '')
   })
   clearListCache()
   return jsonResponse({ success: true })
@@ -755,6 +763,7 @@ function createSheet(body) {
   ;(d.ingredients || []).forEach((ing, i) => {
     sheet.getRange(14 + i, 1).setValue(ing.name || '')
     sheet.getRange(14 + i, 2).setValue(ing.amount || '')
+    sheet.getRange(14 + i, 3).setValue(ing.linkedSheetName || '')
   })
   clearListCache()
   return jsonResponse({ success: true })
