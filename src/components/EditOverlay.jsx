@@ -1,39 +1,222 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCardPhotoUrls, normalizePhotoUrl, parsePhotoUrls } from '../utils/photoUrl'
+
+function normalizeIngredients(list) {
+  const rows = (Array.isArray(list) ? list : []).map((ing) => ({
+    name: ing?.name || '',
+    amount: ing?.amount || '',
+    linkedSheetName: ing?.linkedSheetName || '',
+  }))
+  return rows.length ? rows : [{ name: '', amount: '', linkedSheetName: '' }]
+}
+
+function cardLabel(c) {
+  const title = c?.name || c?.nameRu || c?.sheetName || ''
+  return c?.category ? `${title} · ${c.category}` : title
+}
+
+function matchesQuery(card, query) {
+  const q = String(query || '')
+    .trim()
+    .toLowerCase()
+  if (!q) return true
+  const hay = [card.name, card.nameRu, card.sheetName, card.category]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return hay.includes(q)
+}
+
+/**
+ * Поиск и выбор техкарты для ссылки ингредиента.
+ * Всегда виден: поле поиска + выбранная привязка / сброс.
+ */
+function IngredientLinkPicker({ value, options, onChange }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef(null)
+
+  const selected = useMemo(
+    () => options.find((c) => c.sheetName === value) || null,
+    [options, value],
+  )
+
+  const filtered = useMemo(() => {
+    const list = options.filter((c) => matchesQuery(c, query))
+    return list.slice(0, 40)
+  }, [options, query])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onDoc = (e) => {
+      if (!rootRef.current?.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('touchstart', onDoc)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('touchstart', onDoc)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!value) setQuery('')
+  }, [value])
+
+  return (
+    <div className="ing-link-picker" ref={rootRef}>
+      <div className="ing-link-picker-head">
+        <span className="muted small">Ссылка на техкарту</span>
+        {value ? (
+          <button
+            type="button"
+            className="ghost-btn ing-link-clear"
+            onClick={() => {
+              onChange('')
+              setQuery('')
+              setOpen(false)
+            }}
+          >
+            Сбросить
+          </button>
+        ) : null}
+      </div>
+
+      {selected ? (
+        <button
+          type="button"
+          className="ing-link-selected"
+          onClick={() => {
+            setOpen(true)
+            setQuery('')
+          }}
+        >
+          <span className="ing-link-selected-label">{cardLabel(selected)}</span>
+          <span className="muted small">Изменить</span>
+        </button>
+      ) : (
+        <input
+          className="ing-link-search"
+          type="search"
+          placeholder="Поиск по названию…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          autoComplete="off"
+        />
+      )}
+
+      {open ? (
+        <div className="ing-link-dropdown" role="listbox">
+          {!selected ? null : (
+            <input
+              className="ing-link-search ing-link-search-in-dropdown"
+              type="search"
+              placeholder="Поиск по названию…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+              autoComplete="off"
+            />
+          )}
+          {filtered.length === 0 ? (
+            <p className="muted small ing-link-empty">Ничего не найдено</p>
+          ) : (
+            filtered.map((c) => (
+              <button
+                key={c.sheetName}
+                type="button"
+                className={`ing-link-option${c.sheetName === value ? ' is-active' : ''}`}
+                role="option"
+                aria-selected={c.sheetName === value}
+                onClick={() => {
+                  onChange(c.sheetName)
+                  setQuery('')
+                  setOpen(false)
+                }}
+              >
+                <strong>{c.name || c.nameRu || c.sheetName}</strong>
+                {c.nameRu && c.name && c.nameRu !== c.name ? (
+                  <span className="muted small">{c.nameRu}</span>
+                ) : null}
+                {c.category ? <span className="muted small">{c.category}</span> : null}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, onSave, onDelete }) {
   const [form, setForm] = useState(null)
   const [saved, setSaved] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const openedForSheetRef = useRef('')
 
+  // Инициализация только при открытии / смене карточки — не при фоновом refresh списка.
   useEffect(() => {
-    if (card) {
-      const photoUrls = getCardPhotoUrls(card)
-      setForm({
-        ...card,
-        photoUrls: photoUrls.length ? [...photoUrls] : [''],
-        ingredients: (card.ingredients || []).map((ing) => ({
-          name: ing.name || '',
-          amount: ing.amount || '',
-          linkedSheetName: ing.linkedSheetName || '',
-        })),
-      })
+    if (!isOpen) {
+      setForm(null)
+      openedForSheetRef.current = ''
+      return
     }
+    if (!card) return
+    const sheetKey = String(card.sheetName || '__draft__')
+    if (openedForSheetRef.current === sheetKey) return
+    openedForSheetRef.current = sheetKey
+    const photoUrls = getCardPhotoUrls(card)
+    setForm({
+      ...card,
+      photoUrls: photoUrls.length ? [...photoUrls] : [''],
+      ingredients: normalizeIngredients(card.ingredients),
+    })
     setSaved(false)
     setSubmitError('')
     setIsSubmitting(false)
-  }, [card, isOpen])
+  }, [isOpen, card])
+
+  // Догрузка состава (partial → full), не затирая уже введённые правки.
+  useEffect(() => {
+    if (!isOpen || !card || card.isPartial) return
+    setForm((prev) => {
+      if (!prev) return prev
+      const current = prev.ingredients || []
+      const currentEmpty =
+        current.length === 0 ||
+        current.every((ing) => !ing.name && !ing.amount && !ing.linkedSheetName)
+      const incoming = normalizeIngredients(card.ingredients)
+      const incomingHasData = incoming.some((ing) => ing.name || ing.amount || ing.linkedSheetName)
+      let next = prev
+      if (currentEmpty && incomingHasData) {
+        next = { ...next, ingredients: incoming }
+      }
+      if (!String(prev.technology || '').trim() && card.technology) {
+        next = { ...next, technology: card.technology }
+      }
+      return next
+    })
+  }, [isOpen, card])
+
+  const currentSheet = String(form?.sheetName || card?.sheetName || '').trim()
+  const linkOptions = useMemo(() => {
+    return (linkableCards || [])
+      .filter((c) => c?.sheetName && String(c.sheetName).trim() && c.sheetName !== currentSheet)
+      .slice()
+      .sort((a, b) =>
+        String(a.name || a.nameRu || a.sheetName).localeCompare(
+          String(b.name || b.nameRu || b.sheetName),
+          'ru',
+        ),
+      )
+  }, [linkableCards, currentSheet])
 
   if (!form) return null
-
-  const currentSheet = String(form.sheetName || '').trim()
-  const linkOptions = (linkableCards || [])
-    .filter((c) => c?.sheetName && c.sheetName !== currentSheet)
-    .slice()
-    .sort((a, b) =>
-      String(a.name || a.sheetName).localeCompare(String(b.name || b.sheetName), 'ru'),
-    )
 
   const setField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -55,7 +238,6 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
         current[index] = expanded[0] || normalizePhotoUrl(raw) || ''
         return { ...prev, photoUrls: current }
       }
-      // Вставили несколько URL в одно поле — разворачиваем в список, не затирая остальные.
       const before = current.slice(0, index)
       const after = current.slice(index + 1)
       return { ...prev, photoUrls: [...before, ...expanded, ...after] }
@@ -92,10 +274,13 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
   }
 
   const removeIngredient = (index) => {
-    setForm((prev) => ({
-      ...prev,
-      ingredients: (prev.ingredients || []).filter((_, i) => i !== index),
-    }))
+    setForm((prev) => {
+      const next = (prev.ingredients || []).filter((_, i) => i !== index)
+      return {
+        ...prev,
+        ingredients: next.length ? next : [{ name: '', amount: '', linkedSheetName: '' }],
+      }
+    })
   }
 
   const submit = async (e) => {
@@ -103,7 +288,12 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
     try {
       setIsSubmitting(true)
       setSubmitError('')
-      await onSave(form)
+      await onSave({
+        ...form,
+        ingredients: normalizeIngredients(form.ingredients).filter(
+          (ing) => ing.name || ing.amount || ing.linkedSheetName,
+        ),
+      })
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (err) {
@@ -115,6 +305,9 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
 
   const isCreate = !card?.sheetName
   const photoUrls = form.photoUrls || ['']
+  const ingredients = form.ingredients?.length
+    ? form.ingredients
+    : [{ name: '', amount: '', linkedSheetName: '' }]
 
   return (
     <div className={`edit-overlay ${isOpen ? 'open' : ''}`} aria-hidden={!isOpen}>
@@ -190,10 +383,14 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
           </button>
         </div>
         <p className="muted small ing-link-hint">
-          Можно привязать ингредиент к другой техкарте — в карточке название станет ссылкой.
+          У каждого ингредиента можно привязать техкарту — поиск по названию. В карточке название станет
+          ссылкой.
         </p>
+        {card?.isPartial ? (
+          <p className="muted small">Догружаю состав с сервера…</p>
+        ) : null}
         <div className="ing-list">
-          {(form.ingredients || []).map((ing, index) => (
+          {ingredients.map((ing, index) => (
             <div key={index} className="ing-item">
               <input
                 placeholder="Название"
@@ -208,21 +405,11 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
               <button type="button" className="ghost-btn" onClick={() => removeIngredient(index)}>
                 Удалить
               </button>
-              <label className="ing-link-field">
-                <span className="muted small">Ссылка на техкарту</span>
-                <select
-                  value={ing.linkedSheetName || ''}
-                  onChange={(e) => setIngredient(index, 'linkedSheetName', e.target.value)}
-                >
-                  <option value="">Без ссылки</option>
-                  {linkOptions.map((c) => (
-                    <option key={c.sheetName} value={c.sheetName}>
-                      {c.name || c.nameRu || c.sheetName}
-                      {c.category ? ` · ${c.category}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <IngredientLinkPicker
+                value={ing.linkedSheetName || ''}
+                options={linkOptions}
+                onChange={(sheetName) => setIngredient(index, 'linkedSheetName', sheetName)}
+              />
             </div>
           ))}
         </div>

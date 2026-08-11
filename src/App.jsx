@@ -839,9 +839,14 @@ function App() {
 
     if (!selectedCard) return
     if (pinModal.action === 'edit') {
+      closePinModal()
+      try {
+        await ensureFullCard(selectedCard)
+      } catch (err) {
+        console.warn('Не удалось догрузить карточку перед редактированием', err)
+      }
       setDraftCard(null)
       setEditOpen(true)
-      closePinModal()
       return
     }
     if (pinModal.action === 'delete') {

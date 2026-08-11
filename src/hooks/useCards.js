@@ -108,7 +108,21 @@ export function useCards() {
 
       if (gen !== refreshGen.current) return
       hasCacheRef.current = Array.isArray(nextCards) && nextCards.length > 0
-      setCards(nextCards)
+      setCards((prev) => {
+        if (!Array.isArray(nextCards)) return prev
+        // Не затираем уже догруженный состав partial-списком (иначе пропадают ссылки в редакторе).
+        const prevById = new Map(prev.map((c) => [c.sheetName, c]))
+        return nextCards.map((card) => {
+          const old = prevById.get(card.sheetName)
+          if (!old || old.isPartial || !card.isPartial) return card
+          return {
+            ...card,
+            technology: old.technology || card.technology || '',
+            ingredients: Array.isArray(old.ingredients) ? old.ingredients : card.ingredients || [],
+            isPartial: false,
+          }
+        })
+      })
       setError('')
 
       // Полные техкарты — после списка, без блокировки UI (если ещё не тянули getAll).
