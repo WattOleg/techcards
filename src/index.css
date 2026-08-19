@@ -1547,27 +1547,60 @@ h1 {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: #0b0b0c;
-  color: #fff;
   display: flex;
-  flex-direction: column;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  justify-content: center;
+  align-items: stretch;
   width: 100%;
+  height: 100%;
+  height: 100dvh;
   max-width: none;
   margin: 0;
+  padding: 0;
   box-sizing: border-box;
   overflow: hidden;
-  touch-action: manipulation;
+  background: #000;
+  color: #fff;
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
-/* На широких экранах сторис по центру как приложение */
-@media (min-width: 480px) {
-  .stories-viewer {
-    left: 50%;
-    right: auto;
-    width: min(430px, 100%);
-    transform: translateX(-50%);
-  }
+.stories-viewer-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 430px;
+  overflow: hidden;
+  background: #0b0b0c;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stories-viewer-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.stories-viewer-media-photo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+body.stories-open {
+  overflow: hidden !important;
+  overscroll-behavior: none;
 }
 
 body.stories-open .bottom-tabs,
@@ -1578,23 +1611,28 @@ body.stories-open .app-drawer-root {
 }
 
 .stories-viewer-chrome {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 5;
-  flex: 0 0 auto;
-  padding-right: 48px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 52px 40px 12px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.58) 0%, rgba(0, 0, 0, 0.2) 62%, transparent 100%);
+  pointer-events: none;
+  transition: opacity 0.15s ease;
 }
 
 .stories-viewer-bars {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   margin-bottom: 10px;
 }
 
 .stories-viewer-bar {
   flex: 1;
-  height: 3px;
+  height: 2.5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.32);
   overflow: hidden;
 }
 
@@ -1609,7 +1647,6 @@ body.stories-open .app-drawer-root {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 12px;
 }
 
 .stories-viewer-meta {
@@ -1637,22 +1674,24 @@ body.stories-open .app-drawer-root {
   gap: 6px;
   align-items: center;
   flex-shrink: 0;
+  pointer-events: auto;
 }
 
 .stories-viewer-close {
   position: absolute;
-  top: calc(10px + env(safe-area-inset-top, 0px));
-  right: 12px;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: 8px;
   z-index: 30;
   width: 40px;
   height: 40px;
   border: none;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.45);
   color: #fff;
   font-size: 18px;
   cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
+  transition: opacity 0.15s ease;
 }
 
 .stories-viewer-edit {
@@ -1665,38 +1704,23 @@ body.stories-open .app-drawer-root {
   padding: 0 12px;
   font-size: 13px;
   font-weight: 600;
-  position: relative;
-  z-index: 6;
 }
 
-.stories-viewer-body {
-  position: relative;
-  z-index: 1;
-  flex: 1 1 auto;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 16px;
-  min-height: 0;
-  overflow: hidden;
-  padding-top: 8px;
-}
-
-.stories-viewer-body img {
-  width: min(100%, 360px);
-  max-height: 48vh;
-  object-fit: contain;
-  border-radius: 16px;
-  background: #111;
+.stories-viewer.is-holding .stories-viewer-chrome,
+.stories-viewer.is-holding .stories-viewer-close {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .stories-viewer-fallback {
-  width: min(72vw, 260px);
-  aspect-ratio: 1;
-  border-radius: 28px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
   display: grid;
   place-items: center;
-  font-size: 72px;
+  font-size: 88px;
   font-weight: 700;
 }
 
@@ -1725,14 +1749,19 @@ body.stories-open .app-drawer-root {
 }
 
 .stories-viewer-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
   display: grid;
   gap: 6px;
-  justify-items: center;
-  text-align: center;
-  max-width: 36rem;
-  padding: 0 8px;
-  position: relative;
-  z-index: 3;
+  justify-items: start;
+  text-align: left;
+  max-width: none;
+  padding: 56px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78) 0%, rgba(0, 0, 0, 0.32) 58%, transparent 100%);
+  pointer-events: none;
 }
 
 .stories-viewer-caption-label {
@@ -1761,34 +1790,18 @@ body.stories-open .app-drawer-root {
 
 .stories-viewer-text {
   margin: 0;
-  max-width: 36rem;
-  text-align: center;
+  max-width: none;
+  text-align: left;
   white-space: pre-wrap;
   line-height: 1.45;
   font-size: 15px;
   color: rgba(255, 255, 255, 0.92);
-  max-height: 22vh;
+  max-height: 28vh;
   overflow-y: auto;
-}
-
-.stories-viewer-hit {
-  position: absolute;
-  top: 120px;
-  bottom: 0;
-  width: 42%;
-  border: none;
-  background: transparent;
-  z-index: 2;
-  cursor: pointer;
-}
-
-.stories-viewer-hit.left {
-  left: 0;
-}
-
-.stories-viewer-hit.right {
-  right: 0;
-  width: 42%;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .updates-posts {
@@ -3904,6 +3917,11 @@ body.stories-open .app-drawer-root {
 
 .writeoff-form-unit {
   grid-column: 1 / -1;
+}
+
+.writeoff-unit-select {
+  font-size: 16px;
+  min-height: 44px;
 }
 
 .writeoff-form-reason {

@@ -38,21 +38,78 @@ function kindTone(kind) {
   return 'tone-reg'
 }
 
+const HOLD_DELAY_MS = 180
+const MOVE_CANCEL_PX = 12
+const SWIPE_X_PX = 56
+const SWIPE_Y_PX = 80
+
+function storyImageUrls(item) {
+  if (Array.isArray(item?.imageUrls) && item.imageUrls.length) {
+    return item.imageUrls.filter(Boolean)
+  }
+  return item?.imageUrl ? [item.imageUrl] : []
+}
+
+function flattenStorySlides(items) {
+  const slides = []
+  for (const it of items || []) {
+    const urls = storyImageUrls(it)
+    if (!urls.length) {
+      slides.push({ item: it, imageUrl: null, key: `${it.id}-0` })
+    } else {
+      urls.forEach((url, i) => {
+        slides.push({ item: it, imageUrl: url, key: `${it.id}-${i}` })
+      })
+    }
+  }
+  return slides
+}
+
+function firstSlideOfItem(items, itemIndex) {
+  let n = 0
+  const limit = Math.max(0, Math.min(itemIndex, (items || []).length))
+  for (let i = 0; i < limit; i += 1) {
+    n += storyImageUrls(items[i]).length || 1
+  }
+  return n
+}
+
+function storyDurationMs(item) {
+  const text = String(item?.content || item?.snippet || '')
+  return Math.min(12000, 5000 + Math.min(text.length, 200) * 30)
+}
+
 /**
  * Instagram-like viewer (портал на body — поверх шапки и таббара).
+ * Полноэкранное фото, пауза по удержанию, свайп вниз — закрыть.
  */
 function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
-  const [index, setIndex] = useState(startIndex)
+  const slides = useMemo(() => flattenStorySlides(items), [items])
+  const [index, setIndex] = useState(() => firstSlideOfItem(items, startIndex))
   const [progress, setProgress] = useState(0)
-  const timerRef = useRef(null)
-  const touchX = useRef(null)
-  const touchY = useRef(null)
-  const item = items[index]
-  const durationMs = 4500
+  const [holding, setHolding] = useState(false)
+
+  const timerRef = useRef(0)
+  const elapsedRef = useRef(0)
+  const lastTsRef = useRef(0)
+  const pausedRef = useRef(false)
+  const holdingRef = useRef(false)
+  const holdTimerRef = useRef(null)
+  const pointerRef = useRef(null)
+  const didHoldRef = useRef(false)
+  const onCloseRef = useRef(onClose)
+  const slidesLenRef = useRef(slides.length)
+
+  onCloseRef.current = onClose
+  slidesLenRef.current = slides.length
+
+  const slide = slides[index]
+  const item = slide?.item
 
   useEffect(() => {
-    setIndex(Math.max(0, Math.min(startIndex, items.length - 1)))
-  }, [startIndex, items.length])
+    const next = firstSlideOfItem(items, startIndex)
+    setIndex(Math.max(0, Math.min(next, Math.max(0, slides.length - 1))))
+  }, [startIndex, items, slides.length])
 
   useEffect(() => {
     document.body.classList.add('stories-open')
@@ -61,19 +118,44 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
     return () => {
       document.body.classList.remove('stories-open')
       document.body.style.overflow = prevOverflow
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current)
+        holdTimerRef.current = null
+      }
     }
   }, [])
 
   useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) {
+        pausedRef.current = true
+        return
+      }
+      if (!holdingRef.current) {
+        pausedRef.current = false
+        lastTsRef.current = performance.now()
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
+  useEffect(() => {
     setProgress(0)
+    elapsedRef.current = 0
+    lastTsRef.current = performance.now()
     if (!item) return undefined
-    const started = performance.now()
+    const durationMs = storyDurationMs(item)
     const tick = (now) => {
-      const p = Math.min(1, (now - started) / durationMs)
+      if (!pausedRef.current) {
+        elapsedRef.current += now - lastTsRef.current
+      }
+      lastTsRef.current = now
+      const p = Math.min(1, elapsedRef.current / durationMs)
       setProgress(p)
       if (p >= 1) {
-        if (index < items.length - 1) setIndex((i) => i + 1)
-        else onClose?.()
+        if (index < slidesLenRef.current - 1) setIndex((i) => i + 1)
+        else onCloseRef.current?.()
         return
       }
       timerRef.current = requestAnimationFrame(tick)
@@ -82,117 +164,229 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
     return () => {
       if (timerRef.current) cancelAnimationFrame(timerRef.current)
     }
-  }, [index, item, items.length, onClose])
-
-  if (!item) return null
+  }, [index, item])
 
   const goPrev = () => {
-    if (index <= 0) onClose?.()
+    if (index <= 0) onCloseRef.current?.()
     else setIndex((i) => i - 1)
   }
   const goNext = () => {
-    if (index >= items.length - 1) onClose?.()
+    if (index >= slides.length - 1) onCloseRef.current?.()
     else setIndex((i) => i + 1)
   }
 
-  const imageUrl = item.imageUrl || item.imageUrls?.[0] || null
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCloseRef.current?.()
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        setIndex((i) => {
+          if (i <= 0) {
+            onCloseRef.current?.()
+            return i
+          }
+          return i - 1
+        })
+      }
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault()
+        setIndex((i) => {
+          if (i >= slidesLenRef.current - 1) {
+            onCloseRef.current?.()
+            return i
+          }
+          return i + 1
+        })
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+  }
+
+  const setPaused = (value) => {
+    pausedRef.current = value
+    holdingRef.current = value
+    setHolding(value)
+    if (!value) lastTsRef.current = performance.now()
+  }
+
+  const onPointerDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (e.target.closest('[data-stories-ui]')) return
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    pointerRef.current = { x: e.clientX, y: e.clientY }
+    didHoldRef.current = false
+    clearHoldTimer()
+    holdTimerRef.current = setTimeout(() => {
+      didHoldRef.current = true
+      setPaused(true)
+    }, HOLD_DELAY_MS)
+  }
+
+  const onPointerMove = (e) => {
+    const start = pointerRef.current
+    if (!start || didHoldRef.current) return
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) clearHoldTimer()
+  }
+
+  const onPointerUp = (e) => {
+    clearHoldTimer()
+    const start = pointerRef.current
+    pointerRef.current = null
+    const wasHold = didHoldRef.current
+    if (holdingRef.current || pausedRef.current) setPaused(false)
+    if (!start || wasHold) return
+    if (e.target.closest('[data-stories-ui]')) return
+
+    const dx = e.clientX - start.x
+    const dy = e.clientY - start.y
+    if (dy > SWIPE_Y_PX && Math.abs(dy) > Math.abs(dx) * 1.15) {
+      onCloseRef.current?.()
+      return
+    }
+    if (Math.abs(dx) >= SWIPE_X_PX && Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) goPrev()
+      else goNext()
+      return
+    }
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    if (x < rect.width * 0.33) goPrev()
+    else goNext()
+  }
+
+  const onPointerCancel = () => {
+    clearHoldTimer()
+    pointerRef.current = null
+    if (pausedRef.current) setPaused(false)
+  }
+
+  if (!item || !slide) return null
+
+  const imageUrl = slide.imageUrl
   const bodyText = item.content || item.snippet || ''
 
   const node = (
     <div
-      className="stories-viewer"
+      className={`stories-viewer ${holding ? 'is-holding' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label="Сторис"
-      onTouchStart={(e) => {
-        touchX.current = e.touches[0]?.clientX ?? null
-        touchY.current = e.touches[0]?.clientY ?? null
-      }}
-      onTouchEnd={(e) => {
-        const startX = touchX.current
-        const startY = touchY.current
-        touchX.current = null
-        touchY.current = null
-        if (startX == null || startY == null) return
-        const endX = e.changedTouches[0]?.clientX ?? startX
-        const endY = e.changedTouches[0]?.clientY ?? startY
-        const dx = endX - startX
-        const dy = endY - startY
-        if (dy > 80 && Math.abs(dy) > Math.abs(dx) * 1.2) {
-          onClose?.()
-          return
-        }
-        if (Math.abs(dx) < 48) return
-        if (dx > 0) goPrev()
-        else goNext()
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCloseRef.current?.()
       }}
     >
-      <div className="stories-viewer-chrome">
-        <div className="stories-viewer-bars">
-          {items.map((it, i) => (
-            <div key={it.id} className="stories-viewer-bar">
-              <div
-                className="stories-viewer-bar-fill"
-                style={{
-                  width: i < index ? '100%' : i === index ? `${progress * 100}%` : '0%',
-                }}
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="stories-viewer-top">
-          <div className="stories-viewer-meta">
-            <span className="stories-viewer-label">{item.label || item.subtitle || ''}</span>
-            <strong>{item.title}</strong>
-            <span className="stories-viewer-date">{formatRuDate(item.updatedAt || item.createdAt)}</span>
-          </div>
-          <div className="stories-viewer-actions">
-            {onEdit && item.rawPost ? (
-              <button
-                type="button"
-                className="stories-viewer-edit"
-                onClick={() => {
-                  onClose?.()
-                  onEdit(item.rawPost)
-                }}
-              >
-                Изменить
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <button
-        type="button"
-        className="stories-viewer-close"
-        onClick={onClose}
-        aria-label="Закрыть"
+      <div
+        className="stories-viewer-stage"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onContextMenu={(e) => e.preventDefault()}
       >
-        ✕
-      </button>
+        <div className="stories-viewer-media">
+          {imageUrl ? (
+            <img
+              className="stories-viewer-media-photo"
+              src={imageUrl}
+              alt=""
+              draggable={false}
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className={`stories-viewer-fallback ${kindTone(item.kind)}`}>
+              <span>{initialLetter(item.title)}</span>
+            </div>
+          )}
+        </div>
 
-      <div className="stories-viewer-body">
-        {imageUrl ? (
-          <img src={imageUrl} alt="" referrerPolicy="no-referrer" />
-        ) : (
-          <div className={`stories-viewer-fallback ${kindTone(item.kind)}`}>
-            <span>{initialLetter(item.title)}</span>
+        <div className="stories-viewer-chrome">
+          <div className="stories-viewer-bars">
+            {slides.map((s, i) => (
+              <div key={s.key} className="stories-viewer-bar">
+                <div
+                  className="stories-viewer-bar-fill"
+                  style={{
+                    width: i < index ? '100%' : i === index ? `${progress * 100}%` : '0%',
+                  }}
+                />
+              </div>
+            ))}
           </div>
-        )}
+          <div className="stories-viewer-top">
+            <div className="stories-viewer-meta">
+              <span className="stories-viewer-label">{item.label || item.subtitle || ''}</span>
+              <strong>{item.title}</strong>
+              <span className="stories-viewer-date">{formatRuDate(item.updatedAt || item.createdAt)}</span>
+            </div>
+            <div className="stories-viewer-actions">
+              {onEdit && item.rawPost ? (
+                <button
+                  type="button"
+                  className="stories-viewer-edit"
+                  data-stories-ui="true"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    onCloseRef.current?.()
+                    onEdit(item.rawPost)
+                  }}
+                >
+                  Изменить
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="stories-viewer-close"
+          data-stories-ui="true"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onCloseRef.current?.()}
+          aria-label="Закрыть"
+        >
+          ✕
+        </button>
+
         <div className="stories-viewer-caption">
           {item.label || item.subtitle ? (
             <p className="stories-viewer-caption-label">{item.label || item.subtitle}</p>
           ) : null}
           <h2 className="stories-viewer-caption-title">{item.title}</h2>
-          {bodyText ? <p className="stories-viewer-text">{bodyText}</p> : null}
+          {bodyText ? (
+            <p
+              className="stories-viewer-text"
+              data-stories-ui="true"
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                didHoldRef.current = true
+                setPaused(true)
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation()
+                setPaused(false)
+              }}
+              onPointerCancel={(e) => {
+                e.stopPropagation()
+                setPaused(false)
+              }}
+            >
+              {bodyText}
+            </p>
+          ) : null}
           <p className="stories-viewer-caption-date">{formatRuDate(item.updatedAt || item.createdAt)}</p>
         </div>
       </div>
-
-      <button type="button" className="stories-viewer-hit left" aria-label="Назад" onClick={goPrev} />
-      <button type="button" className="stories-viewer-hit right" aria-label="Далее" onClick={goNext} />
     </div>
   )
 

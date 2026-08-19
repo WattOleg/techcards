@@ -6,9 +6,37 @@ import {
   ymdFromEntry,
 } from '../utils/writeoffDateRu'
 
+const WRITEOFF_UNITS = [
+  { value: 'кг', label: 'Килограмм' },
+  { value: 'гр', label: 'Грамм' },
+  { value: 'л', label: 'Литр' },
+  { value: 'мл', label: 'Миллилитр' },
+  { value: 'шт', label: 'Штуки' },
+]
+
 function uid(prefix) {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function WriteoffUnitSelect({ value, onChange }) {
+  const current = String(value || 'гр')
+  const known = WRITEOFF_UNITS.some((u) => u.value === current)
+  return (
+    <select
+      className="writeoff-unit-select"
+      value={current}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Единица измерения"
+    >
+      {!known ? <option value={current}>{current}</option> : null}
+      {WRITEOFF_UNITS.map((u) => (
+        <option key={u.value} value={u.value}>
+          {u.label}
+        </option>
+      ))}
+    </select>
+  )
 }
 
 function todayYmd() {
@@ -329,7 +357,7 @@ export default function WriteoffsView({
           </label>
           <label className="writeoff-field-label writeoff-form-unit">
             <span className="writeoff-field-caption">Ед. изм.</span>
-            <input placeholder="гр, кг, л, шт…" value={draft.unit} onChange={(e) => setDraft((p) => ({ ...p, unit: e.target.value }))} />
+            <WriteoffUnitSelect value={draft.unit} onChange={(unit) => setDraft((p) => ({ ...p, unit }))} />
           </label>
           <label className="writeoff-field-label writeoff-form-reason">
             <span className="writeoff-field-caption">{draft.type === 'move' ? 'Куда' : 'Причина'}</span>
@@ -515,7 +543,7 @@ export default function WriteoffsView({
               </select>
               <input value={editEntry.item || ''} onChange={(e) => setEditEntry((p) => ({ ...p, item: e.target.value }))} />
               <input value={editEntry.qty || ''} onChange={(e) => setEditEntry((p) => ({ ...p, qty: e.target.value }))} />
-              <input value={editEntry.unit || ''} onChange={(e) => setEditEntry((p) => ({ ...p, unit: e.target.value }))} />
+              <WriteoffUnitSelect value={editEntry.unit || 'гр'} onChange={(unit) => setEditEntry((p) => ({ ...p, unit }))} />
               <input
                 className="writeoff-form-reason"
                 value={editEntry.reason || ''}
