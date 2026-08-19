@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getPhotoCandidates } from '../utils/photoUrl'
 
-function GallerySlide({ url, alt }) {
+export function GallerySlide({ url, alt, className }) {
   const candidates = useMemo(() => getPhotoCandidates(url), [url])
   const [idx, setIdx] = useState(0)
 
@@ -11,11 +11,12 @@ function GallerySlide({ url, alt }) {
 
   const src = idx < candidates.length ? candidates[idx] : ''
   if (!src) {
-    return <div className="hero-placeholder">🍹</div>
+    return <div className={className ? `hero-placeholder ${className}` : 'hero-placeholder'}>🍹</div>
   }
 
   return (
     <img
+      className={className}
       src={src}
       alt={alt}
       referrerPolicy="no-referrer"

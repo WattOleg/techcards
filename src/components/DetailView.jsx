@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import PhotoGallery from './PhotoGallery'
 import ServerLinkDot from './ServerLinkDot'
-import { getCardPhotoUrls } from '../utils/photoUrl'
+import IngredientPhotoViewer from './IngredientPhotoViewer'
+import { getCardPhotoUrls, isPhotoLink } from '../utils/photoUrl'
 
 function DetailView({ card, loading, onBack, onEdit, onExport, onOpenLinkedCard }) {
+  const [photoPreview, setPhotoPreview] = useState(null)
   if (!card) {
     return (
       <div className="view detail-view">
@@ -63,10 +66,20 @@ function DetailView({ card, loading, onBack, onEdit, onExport, onOpenLinkedCard 
         <div className="ingredient-list">
           {card.ingredients?.map((ing, idx) => {
             const linked = String(ing.linkedSheetName || '').trim()
-            const canOpen = Boolean(linked && typeof onOpenLinkedCard === 'function')
+            const photo = isPhotoLink(linked)
+            const canOpenCard = Boolean(linked && !photo && typeof onOpenLinkedCard === 'function')
+            const canOpenPhoto = Boolean(photo)
             return (
               <div key={`${ing.name}-${idx}`} className="ingredient-row">
-                {canOpen ? (
+                {canOpenPhoto ? (
+                  <button
+                    type="button"
+                    className="ingredient-link"
+                    onClick={() => setPhotoPreview({ url: linked, title: ing.name || '' })}
+                  >
+                    {ing.name}
+                  </button>
+                ) : canOpenCard ? (
                   <button
                     type="button"
                     className="ingredient-link"
@@ -97,6 +110,14 @@ function DetailView({ card, loading, onBack, onEdit, onExport, onOpenLinkedCard 
           Экспорт в PDF
         </button>
       </div>
+
+      {photoPreview ? (
+        <IngredientPhotoViewer
+          url={photoPreview.url}
+          title={photoPreview.title}
+          onClose={() => setPhotoPreview(null)}
+        />
+      ) : null}
     </div>
   )
 }

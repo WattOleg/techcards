@@ -691,7 +691,7 @@ function parseSheet(sheet, includeDetails) {
     const ingredients = []
     const lastRow = sheet.getLastRow()
     if (lastRow >= 14) {
-      // A=name, B=amount, C=linkedSheetName (ссылка на другую техкарту)
+      // A=name, B=amount, C=linkedSheetName (техкарта) или URL фото Google Drive
       const ingredientRange = sheet.getRange(14, 1, lastRow - 13, 3).getValues()
       ingredientRange.forEach((row) => {
         if (row[0]) {

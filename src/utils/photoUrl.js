@@ -54,6 +54,23 @@ function looksLikeUrl(value) {
   return /^https?:\/\//i.test(v) || /^data:image\//i.test(v)
 }
 
+/** Ссылка на фото (Google Drive / http), а не id техкарты. */
+export function isPhotoLink(value) {
+  const v = String(value || '').trim()
+  if (!v) return false
+  if (extractGoogleDriveFileId(v)) return true
+  if (!looksLikeUrl(v)) return false
+  try {
+    const u = new URL(v)
+    if (!u.hostname || !u.hostname.includes('.')) return false
+    const path = u.pathname || ''
+    if (/\.(png|jpe?g|webp|gif|avif|bmp|svg)(\?|$)/i.test(path)) return true
+    return path.length > 1 || u.search.length > 1
+  } catch {
+    return false
+  }
+}
+
 /** Достаёт URL из битой JSON-строки / склейки (Sheets иногда портит кавычки). */
 function extractUrlsFromBlob(raw) {
   const value = String(raw || '')

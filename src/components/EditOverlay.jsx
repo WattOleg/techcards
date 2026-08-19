@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getCardPhotoUrls, normalizePhotoUrl, parsePhotoUrls } from '../utils/photoUrl'
+import { getCardPhotoUrls, isPhotoLink, normalizePhotoUrl, parsePhotoUrls } from '../utils/photoUrl'
+import { GallerySlide } from './PhotoGallery'
 
 function normalizeIngredients(list) {
   const rows = (Array.isArray(list) ? list : []).map((ing) => ({
@@ -28,17 +29,18 @@ function matchesQuery(card, query) {
 }
 
 /**
- * Поиск и выбор техкарты для ссылки ингредиента.
- * Всегда виден: поле поиска + выбранная привязка / сброс.
+ * Привязка ингредиента: техкарта (поиск) или фото с Google Drive (ссылка).
  */
 function IngredientLinkPicker({ value, options, onChange }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const [photoDraft, setPhotoDraft] = useState('')
   const rootRef = useRef(null)
+  const photoLinked = isPhotoLink(value)
 
   const selected = useMemo(
-    () => options.find((c) => c.sheetName === value) || null,
-    [options, value],
+    () => (!photoLinked && value ? options.find((c) => c.sheetName === value) || null : null),
+    [options, value, photoLinked],
   )
 
   const filtered = useMemo(() => {
@@ -60,13 +62,44 @@ function IngredientLinkPicker({ value, options, onChange }) {
   }, [open])
 
   useEffect(() => {
-    if (!value) setQuery('')
-  }, [value])
+    if (!value) {
+      setQuery('')
+      setPhotoDraft('')
+      return
+    }
+    setPhotoDraft(photoLinked ? value : '')
+  }, [value, photoLinked])
+
+  const commitPhoto = (raw) => {
+    const v = String(raw || '').trim()
+    if (!v) {
+      if (photoLinked) onChange('')
+      return
+    }
+    if (isPhotoLink(v)) {
+      onChange(v)
+      setQuery('')
+      setOpen(false)
+    }
+  }
+
+  const onSearchChange = (raw) => {
+    const v = String(raw || '')
+    if (isPhotoLink(v.trim())) {
+      setQuery('')
+      setPhotoDraft(v.trim())
+      onChange(v.trim())
+      setOpen(false)
+      return
+    }
+    setQuery(v)
+    setOpen(true)
+  }
 
   return (
     <div className="ing-link-picker" ref={rootRef}>
       <div className="ing-link-picker-head">
-        <span className="muted small">Ссылка на техкарту</span>
+        <span className="muted small">Ссылка на техкарту или фото</span>
         {value ? (
           <button
             type="button"
@@ -74,6 +107,7 @@ function IngredientLinkPicker({ value, options, onChange }) {
             onClick={() => {
               onChange('')
               setQuery('')
+              setPhotoDraft('')
               setOpen(false)
             }}
           >
@@ -92,36 +126,55 @@ function IngredientLinkPicker({ value, options, onChange }) {
           }}
         >
           <span className="ing-link-selected-label">{cardLabel(selected)}</span>
-          <span className="muted small">Изменить</span>
+          <span className="muted small">Техкарта · Изменить</span>
         </button>
       ) : (
         <input
           className="ing-link-search"
           type="search"
-          placeholder="Поиск по названию…"
+          placeholder="Поиск техкарты по названию…"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setOpen(true)
-          }}
+          onChange={(e) => onSearchChange(e.target.value)}
           onFocus={() => setOpen(true)}
           autoComplete="off"
         />
       )}
 
+      <div className={`ing-link-photo-row${photoLinked ? ' is-linked' : ''}`}>
+        {photoLinked ? (
+          <span className="ing-link-photo-thumb" aria-hidden>
+            <GallerySlide url={value} alt="" />
+          </span>
+        ) : null}
+        <input
+          className="ing-link-photo-input"
+          type="text"
+          inputMode="url"
+          placeholder="Или ссылка на фото Google Drive"
+          value={photoDraft}
+          onChange={(e) => {
+            const v = e.target.value
+            setPhotoDraft(v)
+            if (isPhotoLink(v.trim())) onChange(v.trim())
+          }}
+          onBlur={(e) => commitPhoto(e.target.value)}
+          autoComplete="off"
+        />
+      </div>
+
       {open ? (
         <div className="ing-link-dropdown" role="listbox">
-          {!selected ? null : (
+          {selected ? (
             <input
               className="ing-link-search ing-link-search-in-dropdown"
               type="search"
               placeholder="Поиск по названию…"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => onSearchChange(e.target.value)}
               autoFocus
               autoComplete="off"
             />
-          )}
+          ) : null}
           {filtered.length === 0 ? (
             <p className="muted small ing-link-empty">Ничего не найдено</p>
           ) : (
@@ -135,6 +188,7 @@ function IngredientLinkPicker({ value, options, onChange }) {
                 onClick={() => {
                   onChange(c.sheetName)
                   setQuery('')
+                  setPhotoDraft('')
                   setOpen(false)
                 }}
               >
@@ -383,8 +437,8 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
           </button>
         </div>
         <p className="muted small ing-link-hint">
-          У каждого ингредиента можно привязать техкарту — поиск по названию. В карточке название станет
-          ссылкой.
+          Можно привязать техкарту (поиск по названию) или фото с Google Drive. В карточке название станет
+          синей ссылкой: техкарта откроется, фото всплывёт на весь экран.
         </p>
         {card?.isPartial ? (
           <p className="muted small">Догружаю состав с сервера…</p>
