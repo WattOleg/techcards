@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getCardPhotoUrls, isPhotoLink, normalizePhotoUrl, parsePhotoUrls } from '../utils/photoUrl'
+import { uploadIngredientImage } from '../api/updatesSupabase.js'
 import { GallerySlide } from './PhotoGallery'
 
 function normalizeIngredients(list) {
@@ -35,6 +36,8 @@ function IngredientLinkPicker({ value, options, onChange }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [photoDraft, setPhotoDraft] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const rootRef = useRef(null)
   const photoLinked = isPhotoLink(value)
 
@@ -96,6 +99,26 @@ function IngredientLinkPicker({ value, options, onChange }) {
     setOpen(true)
   }
 
+  const onPickFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      setUploading(true)
+      setUploadError('')
+      const url = await uploadIngredientImage(file)
+      if (!url) throw new Error('Не удалось получить ссылку на фото')
+      setPhotoDraft(url)
+      onChange(url)
+      setQuery('')
+      setOpen(false)
+    } catch (err) {
+      setUploadError(err.message || 'Не удалось загрузить фото')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="ing-link-picker" ref={rootRef}>
       <div className="ing-link-picker-head">
@@ -108,6 +131,7 @@ function IngredientLinkPicker({ value, options, onChange }) {
               onChange('')
               setQuery('')
               setPhotoDraft('')
+              setUploadError('')
               setOpen(false)
             }}
           >
@@ -161,6 +185,11 @@ function IngredientLinkPicker({ value, options, onChange }) {
           autoComplete="off"
         />
       </div>
+      <label className={`ghost-btn ing-link-upload-btn${uploading ? ' is-busy' : ''}`}>
+        {uploading ? 'Загрузка фото…' : 'С устройства'}
+        <input type="file" accept="image/*" hidden disabled={uploading} onChange={onPickFile} />
+      </label>
+      {uploadError ? <p className="error ing-link-upload-error">{uploadError}</p> : null}
 
       {open ? (
         <div className="ing-link-dropdown" role="listbox">
@@ -437,8 +466,8 @@ function EditOverlay({ isOpen, card, categories, linkableCards = [], onClose, on
           </button>
         </div>
         <p className="muted small ing-link-hint">
-          Можно привязать техкарту (поиск по названию) или фото с Google Drive. В карточке название станет
-          синей ссылкой: техкарта откроется, фото всплывёт на весь экран.
+          Можно привязать техкарту или фото: загрузить с телефона либо вставить ссылку Google Drive.
+          В карточке название станет синей ссылкой.
         </p>
         {card?.isPartial ? (
           <p className="muted small">Догружаю состав с сервера…</p>

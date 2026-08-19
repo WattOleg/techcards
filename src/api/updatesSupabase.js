@@ -289,12 +289,22 @@ export async function deleteShiftComment(id) {
 }
 
 export async function uploadUpdatesImage(file) {
+  return uploadToUpdatesBucket(file, '')
+}
+
+/** Фото ингредиента с устройства → public URL в bucket `updates` (папка ingredients/). */
+export async function uploadIngredientImage(file) {
+  return uploadToUpdatesBucket(file, 'ingredients')
+}
+
+async function uploadToUpdatesBucket(file, folder) {
   assertConfigured()
   if (!file) throw new Error('Файл не выбран')
   const safeName = String(file.name || 'photo.jpg')
     .replace(/[^\w.\-а-яА-ЯёЁ]+/g, '_')
     .slice(0, 80)
-  const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeName}`
+  const prefix = folder ? `${String(folder).replace(/\/$/, '')}/` : ''
+  const path = `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeName}`
   const { error } = await supabase.storage.from('updates').upload(path, file, {
     cacheControl: '3600',
     upsert: false,

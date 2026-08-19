@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { GallerySlide } from './PhotoGallery'
 
 function formatRuDate(iso) {
   if (!iso) return ''
@@ -295,13 +296,10 @@ function StoriesViewer({ items, startIndex = 0, onClose, onEdit }) {
       >
         <div className="stories-viewer-media">
           {imageUrl ? (
-            <img
-              className="stories-viewer-media-photo"
-              src={imageUrl}
-              alt=""
-              draggable={false}
-              referrerPolicy="no-referrer"
-            />
+            <>
+              <GallerySlide url={imageUrl} alt="" className="stories-viewer-media-blur" />
+              <GallerySlide url={imageUrl} alt="" className="stories-viewer-media-photo" />
+            </>
           ) : (
             <div className={`stories-viewer-fallback ${kindTone(item.kind)}`}>
               <span>{initialLetter(item.title)}</span>
