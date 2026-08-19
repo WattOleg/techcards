@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { fetchAllCards, fetchCardList, peekCachedCardList } from '../api/sheets'
+import { fetchAllCards, fetchCardList, peekCachedCardList, syncCardIntoOfflineCache } from '../api/sheets'
+import { mergeIngredientLinks } from '../utils/ingredientLink'
 import {
   bindNetworkSettleListeners,
   getFetchTimeoutMs,
@@ -110,18 +111,8 @@ export function useCards() {
       hasCacheRef.current = Array.isArray(nextCards) && nextCards.length > 0
       setCards((prev) => {
         if (!Array.isArray(nextCards)) return prev
-        // Не затираем уже догруженный состав partial-списком (иначе пропадают ссылки в редакторе).
         const prevById = new Map(prev.map((c) => [c.sheetName, c]))
-        return nextCards.map((card) => {
-          const old = prevById.get(card.sheetName)
-          if (!old || old.isPartial || !card.isPartial) return card
-          return {
-            ...card,
-            technology: old.technology || card.technology || '',
-            ingredients: Array.isArray(old.ingredients) ? old.ingredients : card.ingredients || [],
-            isPartial: false,
-          }
-        })
+        return nextCards.map((card) => mergeIngredientLinks(prevById.get(card.sheetName), card))
       })
       setError('')
 
@@ -133,8 +124,10 @@ export function useCards() {
               const full = await fetchAllCards({ forceNetwork, networkOnly: true })
               if (gen !== refreshGen.current) return
               if (!Array.isArray(full) || full.length === 0) return
-              const byId = new Map(full.map((c) => [c.sheetName, c]))
-              setCards((prev) => prev.map((c) => byId.get(c.sheetName) || c))
+              setCards((prev) => {
+                const prevById = new Map(prev.map((c) => [c.sheetName, c]))
+                return full.map((card) => mergeIngredientLinks(prevById.get(card.sheetName), card))
+              })
             } catch {
               /* список уже на экране */
             }
@@ -162,6 +155,7 @@ export function useCards() {
   }, [loadCards])
 
   const updateLocalCard = useCallback((updatedCard) => {
+    syncCardIntoOfflineCache(updatedCard)
     setCards((prev) =>
       prev.map((card) => (card.sheetName === updatedCard.sheetName ? updatedCard : card)),
     )
@@ -172,6 +166,7 @@ export function useCards() {
   }, [])
 
   const addLocalCard = useCallback((newCard) => {
+    syncCardIntoOfflineCache(newCard)
     setCards((prev) => [newCard, ...prev.filter((card) => card.sheetName !== newCard.sheetName)])
   }, [])
 

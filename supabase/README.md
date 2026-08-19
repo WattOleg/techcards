@@ -49,6 +49,7 @@ VITE_OPS_BACKEND=supabase
 `Code.gs` has `OPS_MOVED_TO_SUPABASE = true` — write/update/delete for writeoffs & stop list return an error. Redeploy Apps Script after pull.
 
 Для ссылок между техкартами (колонка C у ингредиентов) тоже нужен redeploy Apps Script после обновления `Code.gs`.
+Клиент дополнительно пишет ссылку в поле количества (`50 мл || SheetName`), поэтому ссылки не пропадают даже на старом деплое Apps Script.
 
 ## 8. Rollback
 

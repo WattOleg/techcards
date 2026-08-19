@@ -1,4 +1,5 @@
 import { formatWriteoffDateRuFromEntry } from './writeoffDateRu'
+import { decodeIngredient } from './ingredientLink'
 
 const toText = (value) => String(value || '').trim()
 
@@ -44,10 +45,13 @@ async function getPdfMake() {
 }
 
 function cardToContent(card) {
-  const ingredientsRows = (card.ingredients || []).map((item) => [
-    { text: toText(item.name), margin: [0, 4, 0, 4] },
-    { text: toText(item.amount), alignment: 'right', margin: [0, 4, 0, 4] },
-  ])
+  const ingredientsRows = (card.ingredients || []).map((item) => {
+    const ing = decodeIngredient(item)
+    return [
+      { text: toText(ing.name), margin: [0, 4, 0, 4] },
+      { text: toText(ing.amount), alignment: 'right', margin: [0, 4, 0, 4] },
+    ]
+  })
   const safeRows =
     ingredientsRows.length > 0
       ? ingredientsRows

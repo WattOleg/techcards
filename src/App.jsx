@@ -65,6 +65,7 @@ import {
 import { isSupabaseConfigured } from './api/supabaseClient.js'
 import { exportAllCardsToPdf, exportCardToPdf } from './utils/pdfExport'
 import { serializePhotoUrls, parsePhotoUrls } from './utils/photoUrl'
+import { decodeCardIngredients, encodeCardIngredients } from './utils/ingredientLink'
 import { bindNetworkSettleListeners } from './utils/network'
 import { startServerLinkMonitor } from './hooks/useServerLink'
 
@@ -873,23 +874,25 @@ function App() {
     }
     delete preparedCard.photoUrls
     const isCreate = !selectedCard || draftCard !== null
+    const decodedCard = decodeCardIngredients(preparedCard)
+    const payloadCard = encodeCardIngredients(preparedCard)
 
     if (isCreate) {
       if (!preparedCard.sheetName.trim()) {
         throw new Error('Заполните идентификатор листа (sheetName)')
       }
-      await createCard(preparedCard, import.meta.env.VITE_PIN_CODE)
-      addLocalCard({ ...preparedCard, photoUrls })
+      await createCard(payloadCard, import.meta.env.VITE_PIN_CODE)
+      addLocalCard({ ...decodedCard, photoUrls })
       setSelectedId(preparedCard.sheetName)
       setDetailStack([preparedCard.sheetName])
       setView('detail')
       setDraftCard(null)
     } else {
-      await updateCard(preparedCard.sheetName, preparedCard, import.meta.env.VITE_PIN_CODE)
-      updateLocalCard({ ...preparedCard, photoUrls })
+      await updateCard(preparedCard.sheetName, payloadCard, import.meta.env.VITE_PIN_CODE)
+      updateLocalCard({ ...decodedCard, photoUrls })
     }
     try {
-      const logged = await logTechcardChange({ ...preparedCard, photoUrls })
+      const logged = await logTechcardChange({ ...decodedCard, photoUrls })
       if (logged) {
         setUpdatesRecent((prev) => {
           const without = prev.filter((item) => item.id !== logged.id)

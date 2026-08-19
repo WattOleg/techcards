@@ -665,6 +665,29 @@ function getCard(sheetName) {
   return jsonResponse({ card: parseSheet(sheet, true) })
 }
 
+function splitIngredientAmountLink_(amount, linked) {
+  const mark = ' || '
+  const raw = String(amount || '')
+  let link = linked ? String(linked).trim() : ''
+  let qty = raw
+  const idx = raw.lastIndexOf(mark)
+  if (idx !== -1) {
+    const encoded = raw.substring(idx + mark.length).trim()
+    qty = raw.substring(0, idx)
+    if (!link && encoded) link = encoded
+  }
+  return { amount: qty, linkedSheetName: link }
+}
+
+function normalizeIngredientRow_(name, amount, linked) {
+  const split = splitIngredientAmountLink_(amount, linked)
+  return {
+    name: name || '',
+    amount: split.amount,
+    linkedSheetName: split.linkedSheetName,
+  }
+}
+
 function parseSheet(sheet, includeDetails) {
   const name = sheet.getName()
   const meta = sheet.getRange(1, 2, 12, 1).getValues().map((row) => row[0])
@@ -689,23 +712,48 @@ function parseSheet(sheet, includeDetails) {
 
   if (includeDetails) {
     const ingredients = []
+    let backupLinks = []
+    try {
+      const rawBackup = String(sheet.getRange(13, 2).getValue() || '').trim()
+      if (rawBackup.charAt(0) === '[') backupLinks = JSON.parse(rawBackup)
+    } catch (err) {
+      backupLinks = []
+    }
     const lastRow = sheet.getLastRow()
     if (lastRow >= 14) {
-      // A=name, B=amount, C=linkedSheetName (техкарта) или URL фото Google Drive
+      // A=name, B=amount, C=linkedSheetName (техкарта или URL фото)
       const ingredientRange = sheet.getRange(14, 1, lastRow - 13, 3).getValues()
-      ingredientRange.forEach((row) => {
+      ingredientRange.forEach((row, i) => {
         if (row[0]) {
-          ingredients.push({
-            name: row[0],
-            amount: row[1] || '',
-            linkedSheetName: row[2] ? String(row[2]).trim() : '',
-          })
+          const backup = backupLinks[i] || {}
+          const parsed = normalizeIngredientRow_(row[0], row[1] || '', row[2] || backup.linkedSheetName || '')
+          ingredients.push(parsed)
         }
       })
     }
     card.ingredients = ingredients
   }
   return card
+}
+
+function writeIngredients_(sheet, ingredients) {
+  const rows = (ingredients || []).map((ing) => {
+    const parsed = normalizeIngredientRow_(ing.name || '', ing.amount || '', ing.linkedSheetName || '')
+    const amountCell = parsed.linkedSheetName
+      ? String(parsed.amount || '') + ' || ' + parsed.linkedSheetName
+      : parsed.amount || ''
+    return [parsed.name, amountCell, parsed.linkedSheetName || '']
+  })
+  sheet.getRange(13, 1).setValue('ingredientLinks')
+  sheet.getRange(13, 2).setValue(JSON.stringify(rows.map((r) => ({
+    name: r[0],
+    amount: splitIngredientAmountLink_(r[1], r[2]).amount,
+    linkedSheetName: r[2],
+  }))))
+  sheet.getRange(14, 1, 80, 3).clearContent()
+  if (rows.length) {
+    sheet.getRange(14, 1, rows.length, 3).setValues(rows)
+  }
 }
 
 function updateSheet(body) {
@@ -728,12 +776,7 @@ function updateSheet(body) {
   set(10, d.author)
   set(11, d.date)
   set(12, d.technology)
-  sheet.getRange(14, 1, 50, 3).clearContent()
-  ;(d.ingredients || []).forEach((ing, i) => {
-    sheet.getRange(14 + i, 1).setValue(ing.name || '')
-    sheet.getRange(14 + i, 2).setValue(ing.amount || '')
-    sheet.getRange(14 + i, 3).setValue(ing.linkedSheetName || '')
-  })
+  writeIngredients_(sheet, d.ingredients)
   clearListCache()
   return jsonResponse({ success: true })
 }
@@ -760,11 +803,7 @@ function createSheet(body) {
   set(10, d.author)
   set(11, d.date)
   set(12, d.technology)
-  ;(d.ingredients || []).forEach((ing, i) => {
-    sheet.getRange(14 + i, 1).setValue(ing.name || '')
-    sheet.getRange(14 + i, 2).setValue(ing.amount || '')
-    sheet.getRange(14 + i, 3).setValue(ing.linkedSheetName || '')
-  })
+  writeIngredients_(sheet, d.ingredients)
   clearListCache()
   return jsonResponse({ success: true })
 }

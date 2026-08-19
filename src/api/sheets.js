@@ -1,5 +1,6 @@
 import { getGasClientBaseUrl } from '../config/gasBaseUrl.js'
 import { reportServerReachable, reportServerUnreachable } from '../utils/serverStatus.js'
+import { decodeCardIngredients } from '../utils/ingredientLink.js'
 import {
   fetchStopListFromSupabase,
   fetchWriteoffsFromSupabase,
@@ -76,9 +77,9 @@ function writeOffline(key, value) {
 /** Мгновенный UI из кэша без сети (полная карта предпочтительнее списка). */
 export function peekCachedCardList() {
   const all = readOffline(OFFLINE_KEYS.cardsAll, [])
-  if (Array.isArray(all) && all.length) return all
+  if (Array.isArray(all) && all.length) return decodeCards(all)
   const list = readOffline(OFFLINE_KEYS.cardsList, [])
-  return Array.isArray(list) ? list : []
+  return Array.isArray(list) ? decodeCards(list) : []
 }
 
 export function peekCachedSections() {
@@ -262,6 +263,21 @@ const mockCards = [
   },
 ]
 
+function decodeCards(cards) {
+  return (Array.isArray(cards) ? cards : []).map((card) => decodeCardIngredients(card))
+}
+
+export function syncCardIntoOfflineCache(card) {
+  if (!card || !card.sheetName) return
+  const decoded = decodeCardIngredients(card)
+  const all = readOffline(OFFLINE_KEYS.cardsAll, [])
+  const list = Array.isArray(all) ? all : []
+  writeOffline(
+    OFFLINE_KEYS.cardsAll,
+    [decoded, ...list.filter((c) => c && c.sheetName !== decoded.sheetName)],
+  )
+}
+
 export async function fetchAllCards(options = {}) {
   if (!BASE_URL) {
     return mockCards
@@ -273,13 +289,13 @@ export async function fetchAllCards(options = {}) {
       actionUrl('getAll', forceNetwork ? { _cb: Date.now() } : {}),
       { signal: options.signal },
     )
-    const cards = data.cards || []
+    const cards = decodeCards(data.cards || [])
     writeOffline(OFFLINE_KEYS.cardsAll, cards)
     return cards
   } catch (err) {
     if (forceNetwork || networkOnly) throw err
     const cached = readOffline(OFFLINE_KEYS.cardsAll, [])
-    if (cached.length) return cached
+    if (cached.length) return decodeCards(cached)
     throw err
   }
 }
@@ -295,14 +311,14 @@ export async function fetchCardList(options = {}) {
       actionUrl('getList', forceNetwork ? { _cb: Date.now() } : {}),
       { signal: options.signal },
     )
-    const cards = data.cards || []
+    const cards = decodeCards(data.cards || [])
     writeOffline(OFFLINE_KEYS.cardsList, cards)
     return cards
   } catch (err) {
     // networkOnly: не уходить в localStorage сразу (нужно для повторной попытки после handoff).
     if (forceNetwork || networkOnly) throw err
     const cachedList = readOffline(OFFLINE_KEYS.cardsList, [])
-    if (cachedList.length) return cachedList
+    if (cachedList.length) return decodeCards(cachedList)
     throw err
   }
 }
@@ -317,7 +333,7 @@ export async function fetchCardDetail(sheetName, options = {}) {
       `${BASE_URL}?action=getCard&sheetName=${encodeURIComponent(sheetName)}`,
       { signal: options.signal },
     )
-    const card = data.card || null
+    const card = decodeCardIngredients(data.card || null)
     if (card && card.sheetName) {
       const all = readOffline(OFFLINE_KEYS.cardsAll, [])
       const next = [card, ...all.filter((c) => c && c.sheetName !== card.sheetName)]
@@ -327,9 +343,9 @@ export async function fetchCardDetail(sheetName, options = {}) {
   } catch {
     const all = readOffline(OFFLINE_KEYS.cardsAll, [])
     const foundCached = all.find((card) => card && card.sheetName === sheetName)
-    if (foundCached) return foundCached
+    if (foundCached) return decodeCardIngredients(foundCached)
     const list = readOffline(OFFLINE_KEYS.cardsList, [])
-    return list.find((card) => card && card.sheetName === sheetName) || null
+    return decodeCardIngredients(list.find((card) => card && card.sheetName === sheetName) || null)
   }
 }
 
