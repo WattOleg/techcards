@@ -1,29 +1,68 @@
 import { useMemo, useRef, useState } from 'react'
 import {
   DEFAULT_REVENUE_MONTHS,
+  findMonth,
   formatKzt,
   mergeRevenueMonths,
-  monthKey,
   monthLabelFull,
   monthLabelShort,
+  monthsInWindow,
   parseMoney,
   parseRevenueCsv,
   REVENUE_STORE_KEY,
+  shiftMonth,
 } from '../constants/revenue.js'
 import { readStore, writeStore } from '../utils/localStore.js'
+
+const RANGE_OPTIONS = [
+  { id: '1', label: 'Месяц', count: 1 },
+  { id: '3', label: '3 месяца', count: 3 },
+  { id: '12', label: 'Год', count: 12 },
+]
 
 function sortMonths(rows) {
   return [...(rows || [])].sort((a, b) => String(a.id).localeCompare(String(b.id)))
 }
 
+function fieldsFrom(selected, nextRow) {
+  return {
+    revenue: selected?.revenue ? String(selected.revenue) : '',
+    plan: selected?.plan ? String(selected.plan) : '',
+    nextPlan: nextRow?.plan ? String(nextRow.plan) : '',
+  }
+}
+
+function MonthBars({ row }) {
+  const max = Math.max(row?.revenue || 0, row?.plan || 0, 1)
+  return (
+    <div className="revenue-bars">
+      <div className="revenue-bar-col">
+        <div className="revenue-bar-track">
+          <div className="revenue-bar is-fact" style={{ height: `${((row?.revenue || 0) / max) * 100}%` }} />
+        </div>
+        <span>Факт</span>
+        <strong>{formatKzt(row?.revenue || 0)}</strong>
+      </div>
+      <div className="revenue-bar-col">
+        <div className="revenue-bar-track">
+          <div className="revenue-bar is-plan" style={{ height: `${((row?.plan || 0) / max) * 100}%` }} />
+        </div>
+        <span>План</span>
+        <strong>{formatKzt(row?.plan || 0)}</strong>
+      </div>
+    </div>
+  )
+}
+
 function RevenueChart({ months, selectedId, onSelect }) {
   const width = 360
-  const height = 168
-  const pad = { top: 16, right: 12, bottom: 28, left: 8 }
+  const height = 176
+  const pad = { top: 14, right: 18, bottom: 30, left: 18 }
   const innerW = width - pad.left - pad.right
   const innerH = height - pad.top - pad.bottom
   const maxVal = Math.max(1, ...months.flatMap((m) => [m.revenue, m.plan]))
   const n = Math.max(1, months.length - 1)
+  const labelStep = months.length > 6 ? 2 : 1
 
   const point = (row, i) => {
     const x = pad.left + (n === 0 ? innerW / 2 : (i / n) * innerW)
@@ -70,12 +109,13 @@ function RevenueChart({ months, selectedId, onSelect }) {
       {months.map((row, i) => {
         const p = pts[i]
         const active = row.id === selectedId
+        const showLabel = i % labelStep === 0 || i === months.length - 1
         return (
           <g key={row.id}>
             <circle
               cx={p.x}
               cy={p.y}
-              r="16"
+              r="14"
               fill="transparent"
               onClick={() => onSelect?.(row.id)}
               style={{ cursor: 'pointer' }}
@@ -89,15 +129,17 @@ function RevenueChart({ months, selectedId, onSelect }) {
               strokeWidth="2"
               style={{ pointerEvents: 'none' }}
             />
-            <text
-              x={p.x}
-              y={height - 8}
-              textAnchor="middle"
-              className="revenue-chart-label"
-              fill={active ? '#0052cc' : '#6b6b65'}
-            >
-              {monthLabelShort(row.year, row.month)}
-            </text>
+            {showLabel ? (
+              <text
+                x={p.x}
+                y={height - 8}
+                textAnchor="middle"
+                className="revenue-chart-label"
+                fill={active ? '#0052cc' : '#6b6b65'}
+              >
+                {monthLabelShort(row.year, row.month)}
+              </text>
+            ) : null}
           </g>
         )
       })}
@@ -112,20 +154,20 @@ function loadRevenueMonths() {
 
 export default function RevenueView() {
   const [months, setMonths] = useState(loadRevenueMonths)
-  const [selectedId, setSelectedId] = useState(() => {
+  const [selectedId, setSelectedId] = useState(() => loadRevenueMonths().slice(-1)[0]?.id || '')
+  const [rangeId, setRangeId] = useState('3')
+  const [form, setForm] = useState(() => {
     const list = loadRevenueMonths()
-    return list[list.length - 1]?.id || ''
+    const selected = list.slice(-1)[0] || null
+    const next = selected ? findMonth(list, shiftMonth(selected.year, selected.month, 1).id) : null
+    return fieldsFrom(selected, next)
   })
-  const [formRevenue, setFormRevenue] = useState('')
-  const [formPlan, setFormPlan] = useState('')
-  const [formMonth, setFormMonth] = useState(() => {
-    const now = new Date()
-    return monthKey(now.getFullYear(), now.getMonth() + 1)
-  })
+  const [saveNote, setSaveNote] = useState('')
   const [uploadNote, setUploadNote] = useState('')
   const [uploadError, setUploadError] = useState('')
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef(null)
+  const formRef = useRef(null)
 
   const persist = (next) => {
     const sorted = sortMonths(next)
@@ -134,42 +176,70 @@ export default function RevenueView() {
     return sorted
   }
 
-  const selected = months.find((m) => m.id === selectedId) || months[months.length - 1] || null
+  const selected = findMonth(months, selectedId) || months[months.length - 1] || null
+  const nextSlot = selected ? shiftMonth(selected.year, selected.month, 1) : null
+  const nextRow = nextSlot ? findMonth(months, nextSlot.id) : null
   const prev = useMemo(() => {
     if (!selected) return null
-    const idx = months.findIndex((m) => m.id === selected.id)
-    return idx > 0 ? months[idx - 1] : null
+    const prevSlot = shiftMonth(selected.year, selected.month, -1)
+    return findMonth(months, prevSlot.id)
   }, [months, selected])
 
   const revenue = selected?.revenue || 0
   const plan = selected?.plan || 0
+  const nextPlan = nextRow?.plan || 0
   const deviation = revenue - plan
-  const growth =
-    prev && prev.revenue ? ((revenue - prev.revenue) / prev.revenue) * 100 : null
+  const growth = prev && prev.revenue ? ((revenue - prev.revenue) / prev.revenue) * 100 : null
   const growthPositive = growth == null ? null : growth >= 0
   const deviationPositive = deviation >= 0
+  const range = RANGE_OPTIONS.find((item) => item.id === rangeId) || RANGE_OPTIONS[1]
+  const chartMonths = selected ? monthsInWindow(months, selected, range.count) : []
 
-  const saveManual = () => {
-    const [yearStr, monthStr] = formMonth.split('-')
-    const year = Number(yearStr)
-    const month = Number(monthStr)
-    if (!year || !month) return
-    const row = {
-      id: monthKey(year, month),
-      year,
-      month,
-      revenue: parseMoney(formRevenue),
-      plan: parseMoney(formPlan),
+  const selectMonth = (id) => {
+    let list = months
+    let row = findMonth(list, id)
+    if (!row) {
+      const [yearStr, monthStr] = String(id).split('-')
+      const year = Number(yearStr)
+      const month = Number(monthStr)
+      if (!year || !month) return
+      row = { id, year, month, revenue: 0, plan: 0 }
+      list = persist(mergeRevenueMonths(list, [row]))
+      row = findMonth(list, id) || row
     }
-    const next = persist(mergeRevenueMonths(months, [row]))
     setSelectedId(row.id)
-    setFormRevenue('')
-    setFormPlan('')
-    const found = next.find((m) => m.id === row.id)
-    if (found) {
-      setUploadNote(`Сохранён ${monthLabelFull(found.year, found.month)}`)
-      setUploadError('')
+    const nxt = findMonth(list, shiftMonth(row.year, row.month, 1).id)
+    setForm(fieldsFrom(row, nxt))
+    setSaveNote('')
+  }
+
+  const saveEdits = () => {
+    if (!selected) return
+    const next = nextSlot
+    const updated = [
+      {
+        id: selected.id,
+        year: selected.year,
+        month: selected.month,
+        revenue: parseMoney(form.revenue),
+        plan: parseMoney(form.plan),
+      },
+    ]
+    if (next) {
+      updated.push({
+        id: next.id,
+        year: next.year,
+        month: next.month,
+        revenue: nextRow?.revenue || 0,
+        plan: parseMoney(form.nextPlan),
+      })
     }
+    const list = persist(mergeRevenueMonths(months, updated))
+    const saved = findMonth(list, selected.id)
+    const savedNext = next ? findMonth(list, next.id) : null
+    setForm(fieldsFrom(saved, savedNext))
+    setSaveNote('Изменения сохранены')
+    setUploadError('')
   }
 
   const ingestFile = async (file) => {
@@ -184,7 +254,7 @@ export default function RevenueView() {
 
     if (isPdf || (isSheet && !isCsv)) {
       setUploadError(
-        `${name}: этот формат нужно сохранить как CSV (месяц, выручка, план) или внести цифры вручную.`,
+        `${name}: сохраните лист как CSV (месяц, выручка, план) или отредактируйте цифры ниже.`,
       )
       return
     }
@@ -197,18 +267,20 @@ export default function RevenueView() {
       }
       const rows = parseRevenueCsv(text)
       const next = persist(mergeRevenueMonths(months, rows))
-      setSelectedId(rows[rows.length - 1].id)
-      setUploadNote(`Загружено строк: ${rows.length} из «${name}». Всего месяцев: ${next.length}.`)
+      const last = rows[rows.length - 1]
+      setSelectedId(last.id)
+      const saved = findMonth(next, last.id)
+      const savedNext = saved ? findMonth(next, shiftMonth(saved.year, saved.month, 1).id) : null
+      setForm(fieldsFrom(saved, savedNext))
+      setUploadNote(`Загружено строк: ${rows.length} из «${name}».`)
     } catch (err) {
       setUploadError(err.message || 'Не удалось прочитать файл')
     }
   }
 
-  const onDrop = (e) => {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer?.files?.[0]
-    void ingestFile(file)
+  const focusForm = () => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    formRef.current?.querySelector('input')?.focus()
   }
 
   return (
@@ -219,11 +291,11 @@ export default function RevenueView() {
 
       <div className="revenue-month-row">
         <label className="revenue-month-label">
-          Период
+          Месяц
           <select
             className="revenue-month-select"
             value={selected?.id || ''}
-            onChange={(e) => setSelectedId(e.target.value)}
+            onChange={(e) => selectMonth(e.target.value)}
           >
             {months.map((m) => (
               <option key={m.id} value={m.id}>
@@ -237,19 +309,21 @@ export default function RevenueView() {
             {growthPositive ? '▲' : '▼'} {Math.abs(growth).toFixed(1)}% к прошлому месяцу
           </span>
         ) : (
-          <span className="muted small">Нет базы для сравнения</span>
+          <span className="revenue-growth is-flat">Нет базы для сравнения</span>
         )}
       </div>
 
       <div className="revenue-kpis">
-        <article className="revenue-kpi">
+        <button type="button" className="revenue-kpi is-main" onClick={focusForm}>
           <p className="revenue-kpi-label">Выручка</p>
           <p className="revenue-kpi-value">{formatKzt(revenue)}</p>
-        </article>
-        <article className="revenue-kpi">
+          <span className="revenue-kpi-edit">изменить</span>
+        </button>
+        <button type="button" className="revenue-kpi" onClick={focusForm}>
           <p className="revenue-kpi-label">План</p>
           <p className="revenue-kpi-value">{formatKzt(plan)}</p>
-        </article>
+          <span className="revenue-kpi-edit">изменить</span>
+        </button>
         <article className={`revenue-kpi ${deviationPositive ? 'is-up' : 'is-down'}`}>
           <p className="revenue-kpi-label">Отклонение</p>
           <p className="revenue-kpi-value">
@@ -257,11 +331,32 @@ export default function RevenueView() {
             {formatKzt(Math.abs(deviation))}
           </p>
         </article>
+        <button type="button" className="revenue-kpi is-next" onClick={focusForm}>
+          <p className="revenue-kpi-label">План на сл. месяц</p>
+          <p className="revenue-kpi-value">{nextPlan ? formatKzt(nextPlan) : 'не задан'}</p>
+          <span className="revenue-kpi-edit">
+            {nextSlot ? monthLabelFull(nextSlot.year, nextSlot.month) : 'изменить'}
+          </span>
+        </button>
       </div>
 
       <section className="revenue-card">
         <div className="revenue-card-head">
           <h3>Динамика</h3>
+          <div className="revenue-range" role="tablist" aria-label="Период графика">
+            {RANGE_OPTIONS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={rangeId === item.id}
+                className={`revenue-range-btn${rangeId === item.id ? ' is-active' : ''}`}
+                onClick={() => setRangeId(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           <div className="revenue-legend">
             <span>
               <i className="revenue-legend-line" /> Факт
@@ -271,33 +366,26 @@ export default function RevenueView() {
             </span>
           </div>
         </div>
-        {months.length ? (
-          <RevenueChart months={months} selectedId={selected?.id} onSelect={setSelectedId} />
-        ) : (
+        {chartMonths.length === 0 ? (
           <p className="muted">Нет данных для графика</p>
+        ) : range.count === 1 ? (
+          <MonthBars row={chartMonths[0]} />
+        ) : (
+          <RevenueChart months={chartMonths} selectedId={selected?.id} onSelect={selectMonth} />
         )}
       </section>
 
-      <section className="revenue-card">
-        <h3>Внести данные</h3>
-        <p className="muted small">Структурированная форма для обновления месяца.</p>
+      <section className="revenue-card" ref={formRef}>
+        <h3>Редактировать {selected ? monthLabelFull(selected.year, selected.month) : 'месяц'}</h3>
+        <p className="muted small">Цифры выбранного месяца. План на следующий месяц задаётся отдельным полем.</p>
         <div className="revenue-form">
-          <label className="regulation-editor-label">
-            Месяц
-            <input
-              className="regulation-editor-input"
-              type="month"
-              value={formMonth}
-              onChange={(e) => setFormMonth(e.target.value)}
-            />
-          </label>
           <label className="regulation-editor-label">
             Выручка, ₸
             <input
               className="regulation-editor-input"
               inputMode="numeric"
-              value={formRevenue}
-              onChange={(e) => setFormRevenue(e.target.value)}
+              value={form.revenue}
+              onChange={(e) => setForm((prevForm) => ({ ...prevForm, revenue: e.target.value }))}
               placeholder="0"
             />
           </label>
@@ -306,20 +394,31 @@ export default function RevenueView() {
             <input
               className="regulation-editor-input"
               inputMode="numeric"
-              value={formPlan}
-              onChange={(e) => setFormPlan(e.target.value)}
+              value={form.plan}
+              onChange={(e) => setForm((prevForm) => ({ ...prevForm, plan: e.target.value }))}
               placeholder="0"
             />
           </label>
-          <button type="button" className="btn btn-dark" onClick={saveManual}>
-            Сохранить месяц
+          <label className="regulation-editor-label revenue-form-wide">
+            План на {nextSlot ? monthLabelFull(nextSlot.year, nextSlot.month) : 'следующий месяц'}, ₸
+            <input
+              className="regulation-editor-input"
+              inputMode="numeric"
+              value={form.nextPlan}
+              onChange={(e) => setForm((prevForm) => ({ ...prevForm, nextPlan: e.target.value }))}
+              placeholder="0"
+            />
+          </label>
+          <button type="button" className="btn btn-dark revenue-form-wide" onClick={saveEdits}>
+            Сохранить изменения
           </button>
         </div>
+        {saveNote ? <p className="revenue-upload-ok">{saveNote}</p> : null}
       </section>
 
       <section className="revenue-card">
         <h3>Загрузить файл</h3>
-        <p className="muted small">CSV с колонками месяц, выручка, план. Excel и PDF — через CSV или ручной ввод.</p>
+        <p className="muted small">CSV с колонками месяц, выручка, план.</p>
         <div
           className={`revenue-drop${dragging ? ' is-dragging' : ''}`}
           onDragOver={(e) => {
@@ -327,7 +426,11 @@ export default function RevenueView() {
             setDragging(true)
           }}
           onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
+          onDrop={(e) => {
+            e.preventDefault()
+            setDragging(false)
+            void ingestFile(e.dataTransfer?.files?.[0])
+          }}
           onClick={() => fileRef.current?.click()}
           role="button"
           tabIndex={0}
@@ -336,7 +439,7 @@ export default function RevenueView() {
           }}
         >
           <strong>Перетащите файл сюда</strong>
-          <span className="muted small">или нажмите, чтобы выбрать CSV / Excel / PDF</span>
+          <span className="muted small">или нажмите, чтобы выбрать CSV</span>
         </div>
         <input
           ref={fileRef}

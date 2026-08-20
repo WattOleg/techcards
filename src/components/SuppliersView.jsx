@@ -5,6 +5,7 @@ import {
   newSupplierId,
   SUPPLIER_COLORS,
   SUPPLIERS_STORE_KEY,
+  whatsappHref,
 } from '../constants/suppliers.js'
 import { readStore, writeStore } from '../utils/localStore.js'
 
@@ -12,9 +13,19 @@ function colorOf(id) {
   return SUPPLIER_COLORS.find((c) => c.id === id) || SUPPLIER_COLORS[0]
 }
 
-function telHref(phone) {
-  const digits = String(phone || '').replace(/[^\d+]/g, '')
-  return digits ? `tel:${digits}` : ''
+function WhatsAppIcon() {
+  return (
+    <svg className="supplier-wa-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#25D366"
+        d="M12 2a10 10 0 0 0-8.7 14.9L2 22l5.2-1.4A10 10 0 1 0 12 2zm0 1.8a8.2 8.2 0 0 1 7 12.4l-.3.5.5 1.9-2-.5-.5.3A8.2 8.2 0 1 1 12 3.8z"
+      />
+      <path
+        fill="#25D366"
+        d="M9.4 8.3c-.2-.4-.3-.4-.5-.4h-.4c-.2 0-.4.1-.6.3s-.7.8-.7 1.9.8 2.2 2.3 3.7c1.6 1.5 2.9 1.8 3.4 1.9.5 0 1.4-.4 1.6-1 .2-.5.2-1 .1-1.1l-.5-.2c-.2-.1-1.3-.6-1.5-.7s-.3-.1-.5.1-.6.7-.7.8-.3.2-.5.1c-.8-.4-1.5-1-2-1.8-.2-.2 0-.3.1-.5l.3-.4c.1-.1.1-.3.1-.4s-.3-.7-.4-1z"
+      />
+    </svg>
+  )
 }
 
 function emptyDraft(color) {
@@ -172,7 +183,7 @@ export default function SuppliersView() {
   return (
     <div className="suppliers-view">
       <p className="muted small suppliers-hint">
-        Карточки поставщиков. Телефон менеджера можно набрать по нажатию.
+        Нажмите номер телефона — откроется WhatsApp.
       </p>
       <div className="suppliers-toolbar">
         <input
@@ -201,7 +212,7 @@ export default function SuppliersView() {
         <div className="suppliers-grid">
           {filtered.map((item) => {
             const palette = colorOf(item.color)
-            const href = telHref(item.phone)
+            const wa = whatsappHref(item.phone)
             return (
               <article
                 key={item.id}
@@ -226,8 +237,9 @@ export default function SuppliersView() {
                   <div>
                     <dt>Телефон</dt>
                     <dd>
-                      {href ? (
-                        <a className="supplier-phone" href={href}>
+                      {wa ? (
+                        <a className="supplier-phone" href={wa}>
+                          <WhatsAppIcon />
                           {item.phone}
                         </a>
                       ) : (

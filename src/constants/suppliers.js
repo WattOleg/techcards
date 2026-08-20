@@ -21,6 +21,23 @@ export function nextSupplierColor(index) {
   return SUPPLIER_COLORS[index % SUPPLIER_COLORS.length].id
 }
 
+/** Международный номер без «+» для wa.me / tel. */
+export function phoneDigits(phone) {
+  let digits = String(phone || '').replace(/\D/g, '')
+  if (digits.startsWith('8') && digits.length === 11) digits = `7${digits.slice(1)}`
+  return digits
+}
+
+export function telHref(phone) {
+  const digits = phoneDigits(phone)
+  return digits ? `tel:+${digits}` : ''
+}
+
+export function whatsappHref(phone) {
+  const digits = phoneDigits(phone)
+  return digits.length >= 10 ? `https://wa.me/${digits}` : ''
+}
+
 export const DEFAULT_SUPPLIERS = [
   {
     id: 'sup_coffee',

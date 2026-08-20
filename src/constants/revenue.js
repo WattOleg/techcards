@@ -21,6 +21,29 @@ export function monthKey(year, month) {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
+export function shiftMonth(year, month, delta) {
+  const idx = Number(year) * 12 + (Number(month) - 1) + Number(delta)
+  const y = Math.floor(idx / 12)
+  const m = (idx % 12) + 1
+  return { year: y, month: m, id: monthKey(y, m) }
+}
+
+export function findMonth(rows, id) {
+  return (rows || []).find((row) => row.id === id) || null
+}
+
+/** Окно из `count` месяцев, заканчивающееся на `end`. Пустые слоты — нули. */
+export function monthsInWindow(rows, end, count) {
+  if (!end || count < 1) return []
+  const map = new Map((rows || []).map((row) => [row.id, row]))
+  const out = []
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const slot = shiftMonth(end.year, end.month, -i)
+    out.push(map.get(slot.id) || { ...slot, revenue: 0, plan: 0, placeholder: true })
+  }
+  return out
+}
+
 export function monthLabelShort(year, month) {
   return `${MONTH_SHORT[month - 1]} ${String(year).slice(2)}`
 }
