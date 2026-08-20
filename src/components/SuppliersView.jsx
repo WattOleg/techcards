@@ -40,95 +40,155 @@ function emptyDraft(color) {
   }
 }
 
-function SupplierEditor({ draft, onChange, onClose, onSave, onDelete }) {
-  const isNew = !draft.id
+function ColorPicker({ value, onChange }) {
   return (
-    <div className="export-modal-backdrop" onClick={onClose}>
-      <div className="export-modal regulation-editor-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{isNew ? 'Новый поставщик' : 'Поставщик'}</h3>
-        <label className="regulation-editor-label">
-          Компания
+    <div className="supplier-color-row" role="group" aria-label="Цвет карточки">
+      {SUPPLIER_COLORS.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          className={`supplier-color-dot${value === c.id ? ' is-active' : ''}`}
+          style={{ background: c.bg, borderColor: c.border }}
+          onClick={() => onChange(c.id)}
+          aria-label={c.id}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SupplierEditorCard({ draft, onChange, onCancel, onSave, onDelete }) {
+  const isNew = !draft.id
+  const palette = colorOf(draft.color)
+
+  const set = (patch) => onChange({ ...draft, ...patch })
+
+  return (
+    <form
+      className="supplier-frame is-editing"
+      style={{ background: palette.bg, borderColor: palette.border }}
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave()
+      }}
+    >
+      <header className="supplier-frame-head">
+        <input
+          className="supplier-edit-name"
+          value={draft.name}
+          onChange={(e) => set({ name: e.target.value })}
+          placeholder="Название компании"
+          aria-label="Компания"
+          autoFocus
+        />
+      </header>
+
+      <div className="supplier-edit-grid">
+        <label className="supplier-edit-field">
+          <span>Менеджер</span>
           <input
-            className="regulation-editor-input"
-            value={draft.name}
-            onChange={(e) => onChange({ ...draft, name: e.target.value })}
-            placeholder="Название"
-            autoFocus
-          />
-        </label>
-        <label className="regulation-editor-label">
-          Менеджер
-          <input
-            className="regulation-editor-input"
+            className="supplier-edit-input"
             value={draft.manager}
-            onChange={(e) => onChange({ ...draft, manager: e.target.value })}
+            onChange={(e) => set({ manager: e.target.value })}
             placeholder="Имя менеджера"
           />
         </label>
-        <label className="regulation-editor-label">
-          Телефон менеджера
+        <label className="supplier-edit-field">
+          <span>Телефон</span>
           <input
-            className="regulation-editor-input"
+            className="supplier-edit-input"
             type="tel"
             value={draft.phone}
-            onChange={(e) => onChange({ ...draft, phone: e.target.value })}
+            onChange={(e) => set({ phone: e.target.value })}
             placeholder="+7 …"
           />
         </label>
-        <label className="regulation-editor-label">
-          Что поставляют
+        <label className="supplier-edit-field">
+          <span>Поставляют</span>
           <textarea
-            className="section-editor-textarea"
+            className="supplier-edit-textarea"
             value={draft.supplies}
-            onChange={(e) => onChange({ ...draft, supplies: e.target.value })}
+            onChange={(e) => set({ supplies: e.target.value })}
             placeholder="Ассортимент"
-            rows={3}
+            rows={2}
           />
         </label>
-        <label className="regulation-editor-label">
-          Условия поставок
+        <label className="supplier-edit-field">
+          <span>Условия поставок</span>
           <textarea
-            className="section-editor-textarea"
+            className="supplier-edit-textarea"
             value={draft.terms}
-            onChange={(e) => onChange({ ...draft, terms: e.target.value })}
+            onChange={(e) => set({ terms: e.target.value })}
             placeholder="График, оплата, минимум"
-            rows={3}
+            rows={2}
           />
         </label>
-        <div className="supplier-color-row" role="group" aria-label="Цвет карточки">
-          {SUPPLIER_COLORS.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={`supplier-color-dot${draft.color === c.id ? ' is-active' : ''}`}
-              style={{ background: c.bg, borderColor: c.border }}
-              onClick={() => onChange({ ...draft, color: c.id })}
-              aria-label={c.id}
-            />
-          ))}
-        </div>
-        <div className="export-actions">
-          {!isNew && onDelete ? (
-            <button type="button" className="ghost-btn regulation-delete-btn" onClick={onDelete}>
-              Удалить
-            </button>
-          ) : (
-            <span />
-          )}
-          <button type="button" className="ghost-btn" onClick={onClose}>
-            Отмена
-          </button>
-          <button
-            type="button"
-            className="btn btn-dark"
-            disabled={!draft.name.trim()}
-            onClick={onSave}
-          >
-            Сохранить
-          </button>
+        <div className="supplier-edit-field">
+          <span>Цвет карточки</span>
+          <ColorPicker value={draft.color} onChange={(color) => set({ color })} />
         </div>
       </div>
-    </div>
+
+      <div className="supplier-edit-actions">
+        {!isNew && onDelete ? (
+          <button type="button" className="ghost-btn btn-compact supplier-delete-btn" onClick={onDelete}>
+            Удалить
+          </button>
+        ) : null}
+        <button type="button" className="ghost-btn btn-compact" onClick={onCancel}>
+          Отмена
+        </button>
+        <button type="submit" className="btn btn-dark btn-compact" disabled={!draft.name.trim()}>
+          Сохранить
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function SupplierViewCard({ item, onEdit }) {
+  const palette = colorOf(item.color)
+  const wa = whatsappHref(item.phone)
+
+  return (
+    <article
+      className="supplier-frame"
+      style={{ background: palette.bg, borderColor: palette.border }}
+    >
+      <header className="supplier-frame-head">
+        <h3>{item.name}</h3>
+        <button type="button" className="ghost-btn btn-compact supplier-edit-btn" onClick={onEdit}>
+          Изменить
+        </button>
+      </header>
+      <dl className="supplier-meta">
+        <div>
+          <dt>Менеджер</dt>
+          <dd>{item.manager || '—'}</dd>
+        </div>
+        <div>
+          <dt>Телефон</dt>
+          <dd>
+            {wa ? (
+              <a className="supplier-phone" href={wa}>
+                <WhatsAppIcon />
+                {item.phone}
+              </a>
+            ) : (
+              item.phone || '—'
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Поставляют</dt>
+          <dd>{item.supplies || '—'}</dd>
+        </div>
+        <div>
+          <dt>Условия поставок</dt>
+          <dd>{item.terms || '—'}</dd>
+        </div>
+      </dl>
+    </article>
   )
 }
 
@@ -180,6 +240,9 @@ export default function SuppliersView() {
     setDraft(null)
   }
 
+  const showNewEditor = Boolean(draft && !draft.id)
+  const isEmpty = filtered.length === 0 && !showNewEditor
+
   return (
     <div className="suppliers-view">
       <p className="muted small suppliers-hint">
@@ -203,74 +266,37 @@ export default function SuppliersView() {
         </button>
       </div>
 
-      {filtered.length === 0 ? (
+      {isEmpty ? (
         <section className="info-page drawer-placeholder">
           <h3>Никого нет</h3>
           <p className="muted">Добавьте первого поставщика.</p>
         </section>
       ) : (
         <div className="suppliers-grid">
-          {filtered.map((item) => {
-            const palette = colorOf(item.color)
-            const wa = whatsappHref(item.phone)
-            return (
-              <article
+          {showNewEditor ? (
+            <SupplierEditorCard
+              draft={draft}
+              onChange={setDraft}
+              onCancel={() => setDraft(null)}
+              onSave={saveDraft}
+            />
+          ) : null}
+          {filtered.map((item) =>
+            draft?.id === item.id ? (
+              <SupplierEditorCard
                 key={item.id}
-                className="supplier-frame"
-                style={{ background: palette.bg, borderColor: palette.border }}
-              >
-                <header className="supplier-frame-head">
-                  <h3>{item.name}</h3>
-                  <button
-                    type="button"
-                    className="ghost-btn btn-compact supplier-edit-btn"
-                    onClick={() => setDraft({ ...item })}
-                  >
-                    Изменить
-                  </button>
-                </header>
-                <dl className="supplier-meta">
-                  <div>
-                    <dt>Менеджер</dt>
-                    <dd>{item.manager || '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>Телефон</dt>
-                    <dd>
-                      {wa ? (
-                        <a className="supplier-phone" href={wa}>
-                          <WhatsAppIcon />
-                          {item.phone}
-                        </a>
-                      ) : (
-                        item.phone || '—'
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Поставляют</dt>
-                    <dd>{item.supplies || '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>Условия поставок</dt>
-                    <dd>{item.terms || '—'}</dd>
-                  </div>
-                </dl>
-              </article>
-            )
-          })}
+                draft={draft}
+                onChange={setDraft}
+                onCancel={() => setDraft(null)}
+                onSave={saveDraft}
+                onDelete={deleteDraft}
+              />
+            ) : (
+              <SupplierViewCard key={item.id} item={item} onEdit={() => setDraft({ ...item })} />
+            ),
+          )}
         </div>
       )}
-
-      {draft ? (
-        <SupplierEditor
-          draft={draft}
-          onChange={setDraft}
-          onClose={() => setDraft(null)}
-          onSave={saveDraft}
-          onDelete={draft.id ? deleteDraft : undefined}
-        />
-      ) : null}
     </div>
   )
 }

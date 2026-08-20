@@ -4457,6 +4457,7 @@ body.ing-photo-open .app-drawer-root {
 .suppliers-grid {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .supplier-frame {
@@ -4465,6 +4466,7 @@ body.ing-photo-open .app-drawer-root {
   padding: 14px 14px 12px;
   display: grid;
   gap: 10px;
+  min-width: 0;
   box-shadow: 0 1px 0 rgba(26, 26, 24, 0.04);
 }
 
@@ -4473,17 +4475,23 @@ body.ing-photo-open .app-drawer-root {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
-.supplier-frame-head h3 {
+.supplier-frame-head h3,
+.supplier-edit-name {
   margin: 0;
+  min-width: 0;
+  flex: 1;
   font-family: 'DM Serif Display', serif;
   font-size: 1.22rem;
   font-weight: 400;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .supplier-edit-btn {
+  flex: 0 0 auto;
   background: rgba(255, 255, 255, 0.55);
   border: none;
 }
@@ -4492,11 +4500,13 @@ body.ing-photo-open .app-drawer-root {
   margin: 0;
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .supplier-meta > div {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
 .supplier-meta dt {
@@ -4512,6 +4522,7 @@ body.ing-photo-open .app-drawer-root {
   font-size: 14px;
   line-height: 1.4;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .supplier-phone {
@@ -4521,22 +4532,84 @@ body.ing-photo-open .app-drawer-root {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 44px;
+  min-height: 32px;
 }
 
 .supplier-wa-icon {
   flex: 0 0 auto;
 }
 
+.supplier-edit-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.supplier-edit-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.supplier-edit-field > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+.supplier-edit-name,
+.supplier-edit-input,
+.supplier-edit-textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(26, 26, 24, 0.12);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.supplier-edit-name {
+  padding: 8px 10px;
+}
+
+.supplier-edit-textarea {
+  min-height: 64px;
+  max-height: 160px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.supplier-edit-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.supplier-edit-actions > * {
+  width: 100%;
+  min-width: 0;
+}
+
+.supplier-edit-actions .supplier-delete-btn {
+  grid-column: 1 / -1;
+  color: #7c2c2c;
+  background: rgba(255, 255, 255, 0.45);
+}
+
 .supplier-color-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .supplier-color-dot {
   width: 28px;
   height: 28px;
+  flex: 0 0 auto;
   border-radius: 999px;
   border: 2px solid transparent;
   padding: 0;
