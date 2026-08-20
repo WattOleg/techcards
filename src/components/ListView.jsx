@@ -9,6 +9,8 @@ import ServerLinkDot from './ServerLinkDot'
 import WriteoffsView from './WriteoffsView'
 import UpdatesView from './UpdatesView'
 import EquipmentHub from './EquipmentHub'
+import SuppliersView from './SuppliersView'
+import RevenueView from './RevenueView'
 import {
   CATEGORY_TO_SECTION,
   SECTION_TO_CATEGORY,
@@ -203,7 +205,11 @@ function ListView({
     }
   }
 
-  const showHeaderTitle = MAIN_TAB_IDS.includes(activeSection) || activeSection === 'updates'
+  const showHeaderTitle =
+    MAIN_TAB_IDS.includes(activeSection) ||
+    activeSection === 'updates' ||
+    activeSection === 'suppliers' ||
+    activeSection === 'revenue'
   const activeSectionLabel =
     activeSection === 'techcards'
       ? 'Карточки'
@@ -213,7 +219,11 @@ function ListView({
           ? 'Списания'
           : activeSection === 'updates'
             ? 'Актуальное'
-            : ''
+            : activeSection === 'suppliers'
+              ? 'Поставщики'
+              : activeSection === 'revenue'
+                ? 'Выручка'
+                : ''
   const activeMainSection = MAIN_TAB_IDS.includes(activeSection) ? activeSection : null
   const isRegulations = REGULATION_SECTION_IDS.includes(activeSection)
   const isChecklist = CHECKLIST_SECTION_IDS.includes(activeSection)
@@ -342,6 +352,9 @@ function ListView({
           onAddItem={() => checklists.onAddItem?.(checklistType)}
         />
       ) : null}
+
+      {activeSection === 'suppliers' ? <SuppliersView /> : null}
+      {activeSection === 'revenue' ? <RevenueView /> : null}
 
       {isUpdates && updates ? (
         <UpdatesView

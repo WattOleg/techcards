@@ -244,6 +244,7 @@ function App() {
     cachedSchedule ? normalizeScheduleServer(cachedSchedule) : DEFAULT_SCHEDULE,
   )
   const [scheduleUnlocked, setScheduleUnlocked] = useState(false)
+  const [suppliersUnlocked, setSuppliersUnlocked] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaveError, setScheduleSaveError] = useState('')
   const [scheduleLoadError, setScheduleLoadError] = useState('')
@@ -531,6 +532,10 @@ function App() {
   }, [activeSection])
 
   useEffect(() => {
+    if (activeSection !== 'suppliers') setSuppliersUnlocked(false)
+  }, [activeSection])
+
+  useEffect(() => {
     const onVisit = (e) => {
       if (typeof e.detail === 'number' && !Number.isNaN(e.detail)) setVisitCount(e.detail)
     }
@@ -791,6 +796,14 @@ function App() {
     setPinModal({ open: true, action: 'scheduleUnlock' })
   }
 
+  const handleSectionChange = (id) => {
+    if (id === 'suppliers' && !suppliersUnlocked) {
+      setPinModal({ open: true, action: 'suppliersUnlock' })
+      return
+    }
+    setActiveSection(id)
+  }
+
   const closePinModal = () => {
     setPinModal({ open: false, action: null })
   }
@@ -834,6 +847,13 @@ function App() {
 
     if (pinModal.action === 'scheduleUnlock') {
       setScheduleUnlocked(true)
+      closePinModal()
+      return
+    }
+
+    if (pinModal.action === 'suppliersUnlock') {
+      setSuppliersUnlocked(true)
+      setActiveSection('suppliers')
       closePinModal()
       return
     }
@@ -1250,7 +1270,7 @@ function App() {
             loading={loading}
             error={error}
             activeSection={activeSection}
-            onSectionChange={setActiveSection}
+            onSectionChange={handleSectionChange}
             onSelect={openDetail}
             onRefresh={refresh}
             onExportSelected={exportSelectedCards}
@@ -1387,7 +1407,9 @@ function App() {
               ? 'Создать'
               : pinModal.action === 'scheduleUnlock'
                 ? 'Графики'
-                : pinModal.action === 'addRegulationCard'
+                : pinModal.action === 'suppliersUnlock'
+                  ? 'База поставщиков'
+                  : pinModal.action === 'addRegulationCard'
                   ? 'Новая карточка регламента'
                   : pinModal.action === 'editRegulationCard'
                     ? 'Редактировать карточку'

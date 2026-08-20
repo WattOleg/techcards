@@ -4,4 +4,6 @@ export const DRAWER_ITEMS = [
   { id: 'equipment_instructions', label: 'Инструкции по оборудованию' },
   { id: 'checklist-opening', label: 'Чек-лист открытия смены' },
   { id: 'checklist-closing', label: 'Чек-лист закрытия смены' },
+  { id: 'suppliers', label: 'База поставщиков', pin: true },
+  { id: 'revenue', label: 'Выручка' },
 ]

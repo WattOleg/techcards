@@ -2,6 +2,25 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { DRAWER_ITEMS } from '../constants/drawerNav.js'
 import { searchMenuContent } from '../api/menuSearchSupabase.js'
 
+function LockIcon() {
+  return (
+    <svg
+      className="app-drawer-lock"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
 function HamburgerIcon() {
   return (
     <svg
@@ -196,10 +215,12 @@ export default function AppDrawer({
                   <button
                     key={item.id}
                     type="button"
-                    className={`app-drawer-item${isActive ? ' is-active' : ''}`}
+                    className={`app-drawer-item${isActive ? ' is-active' : ''}${item.id === 'suppliers' ? ' drawer-secure-start' : ''}`}
+                    title={item.pin ? 'Нужен код доступа' : undefined}
                     onClick={() => go(item.id)}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
+                    {item.pin ? <LockIcon /> : null}
                   </button>
                 )
               })}
