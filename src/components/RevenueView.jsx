@@ -12,13 +12,35 @@ import {
   REVENUE_STORE_KEY,
   shiftMonth,
 } from '../constants/revenue.js'
+import {
+  buildReportPayload,
+  computePayout,
+  computeRollingSummary,
+  DEFAULT_REWARD_RATE,
+  downloadRevenueCsv,
+  formatPct,
+  monthsInRange,
+  periodLabel,
+  REVENUE_REWARD_RATE_KEY,
+  sumRevenue,
+  avgRevenue,
+} from '../constants/revenueAnalytics.js'
 import { readStore, writeStore } from '../utils/localStore.js'
+import { exportRevenueReportToPdf } from '../utils/pdfExport.js'
 
 const RANGE_OPTIONS = [
   { id: '1', label: 'Месяц', count: 1 },
   { id: '3', label: '3 месяца', count: 3 },
   { id: '12', label: 'Год', count: 12 },
 ]
+
+function DownloadIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M12 3v12M7 10l5 5 5-5M5 21h14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
 
 function sortMonths(rows) {
   return [...(rows || [])].sort((a, b) => String(a.id).localeCompare(String(b.id)))
@@ -152,9 +174,20 @@ function loadRevenueMonths() {
   return sortMonths(Array.isArray(stored) ? stored : DEFAULT_REVENUE_MONTHS)
 }
 
+function loadRewardRate() {
+  const stored = readStore(REVENUE_REWARD_RATE_KEY, null)
+  const n = Number(stored)
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_REWARD_RATE
+}
+
 export default function RevenueView() {
   const [months, setMonths] = useState(loadRevenueMonths)
   const [selectedId, setSelectedId] = useState(() => loadRevenueMonths().slice(-1)[0]?.id || '')
+  const [periodFromId, setPeriodFromId] = useState(() => loadRevenueMonths()[0]?.id || '')
+  const [periodToId, setPeriodToId] = useState(() => loadRevenueMonths().slice(-1)[0]?.id || '')
+  const [rewardRate, setRewardRate] = useState(loadRewardRate)
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportError, setExportError] = useState('')
   const [rangeId, setRangeId] = useState('3')
   const [form, setForm] = useState(() => {
     const list = loadRevenueMonths()
@@ -195,6 +228,57 @@ export default function RevenueView() {
   const range = RANGE_OPTIONS.find((item) => item.id === rangeId) || RANGE_OPTIONS[1]
   const chartMonths = selected ? monthsInWindow(months, selected, range.count) : []
 
+  const periodRows = useMemo(
+    () => monthsInRange(months, periodFromId, periodToId),
+    [months, periodFromId, periodToId],
+  )
+  const rolling = useMemo(() => computeRollingSummary(months, selected), [months, selected])
+  const payout = useMemo(
+    () => computePayout(months, selected, rewardRate),
+    [months, selected, rewardRate],
+  )
+  const reportPayload = useMemo(
+    () =>
+      buildReportPayload({
+        months,
+        selectedRow: selected,
+        periodFromId,
+        periodToId,
+        rewardRate,
+      }),
+    [months, selected, periodFromId, periodToId, rewardRate],
+  )
+  const tableRows = reportPayload.tableRows
+  const forecastRow = reportPayload.forecastRow
+  const insights = reportPayload.insights
+
+  const updateRewardRate = (value) => {
+    const next = Math.max(0, Math.min(100, parseMoney(value)))
+    setRewardRate(next)
+    writeStore(REVENUE_REWARD_RATE_KEY, next)
+  }
+
+  const handleExportPdf = async () => {
+    setExportError('')
+    setExportBusy(true)
+    try {
+      await exportRevenueReportToPdf(reportPayload)
+    } catch (err) {
+      setExportError(err.message || 'Не удалось сформировать PDF')
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
+  const handleExportCsv = () => {
+    setExportError('')
+    try {
+      downloadRevenueCsv(reportPayload)
+    } catch (err) {
+      setExportError(err.message || 'Не удалось сформировать CSV')
+    }
+  }
+
   const selectMonth = (id) => {
     let list = months
     let row = findMonth(list, id)
@@ -208,6 +292,7 @@ export default function RevenueView() {
       row = findMonth(list, id) || row
     }
     setSelectedId(row.id)
+    setPeriodToId(row.id)
     const nxt = findMonth(list, shiftMonth(row.year, row.month, 1).id)
     setForm(fieldsFrom(row, nxt))
     setSaveNote('')
@@ -373,6 +458,201 @@ export default function RevenueView() {
         ) : (
           <RevenueChart months={chartMonths} selectedId={selected?.id} onSelect={selectMonth} />
         )}
+      </section>
+
+      <section className="revenue-card revenue-analytics">
+        <div className="revenue-analytics-head">
+          <div>
+            <h3>Аналитика и отчёт</h3>
+            <p className="muted small">Период, сводка, выплаты и выгрузка — как в отчёте по бару.</p>
+          </div>
+          <div className="revenue-analytics-actions">
+            <button
+              type="button"
+              className="ghost-btn revenue-export-btn"
+              onClick={() => void handleExportPdf()}
+              disabled={exportBusy || !periodRows.length}
+              aria-label="Скачать PDF"
+              title="Скачать PDF"
+            >
+              <DownloadIcon />
+              <span>PDF</span>
+            </button>
+            <button
+              type="button"
+              className="ghost-btn revenue-export-btn"
+              onClick={handleExportCsv}
+              disabled={!periodRows.length}
+              aria-label="Скачать CSV"
+              title="Скачать CSV"
+            >
+              <DownloadIcon />
+              <span>CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="revenue-period-row">
+          <label className="revenue-period-field">
+            <span>Период от</span>
+            <select
+              className="revenue-month-select"
+              value={periodFromId}
+              onChange={(e) => setPeriodFromId(e.target.value)}
+            >
+              {months.map((m) => (
+                <option key={`from-${m.id}`} value={m.id}>
+                  {monthLabelFull(m.year, m.month)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="revenue-period-field">
+            <span>Период до</span>
+            <select
+              className="revenue-month-select"
+              value={periodToId}
+              onChange={(e) => setPeriodToId(e.target.value)}
+            >
+              {months.map((m) => (
+                <option key={`to-${m.id}`} value={m.id}>
+                  {monthLabelFull(m.year, m.month)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <p className="revenue-period-caption">
+          {periodRows.length
+            ? `${periodLabel(periodRows[0], periodRows[periodRows.length - 1])} · ${periodRows.length} мес.`
+            : 'Выберите период'}
+        </p>
+
+        <div className="revenue-analytics-summary">
+          <article className="revenue-summary-card">
+            <p className="revenue-summary-label">Выручка за период</p>
+            <p className="revenue-summary-value">{formatKzt(sumRevenue(periodRows))}</p>
+          </article>
+          <article className="revenue-summary-card">
+            <p className="revenue-summary-label">Средняя в месяц</p>
+            <p className="revenue-summary-value">{formatKzt(avgRevenue(periodRows))}</p>
+          </article>
+          <article className="revenue-summary-card">
+            <p className="revenue-summary-label">
+              Рост {selected ? `(${monthLabelFull(selected.year, selected.month)})` : ''}
+            </p>
+            <p
+              className={`revenue-summary-value${
+                rolling.growthVsAvg == null ? '' : rolling.growthVsAvg >= 0 ? ' is-up' : ' is-down'
+              }`}
+            >
+              {rolling.growthVsAvg == null ? '—' : formatPct(rolling.growthVsAvg)}
+            </p>
+            <p className="revenue-summary-hint">к среднему за 3 мес.</p>
+          </article>
+          <article className="revenue-summary-card">
+            <p className="revenue-summary-label">
+              Прогноз {forecastRow ? `(${forecastRow.label})` : 'след. мес.'}
+            </p>
+            <p className="revenue-summary-value is-forecast">{formatKzt(rolling.forecast)}</p>
+          </article>
+        </div>
+
+        <div className="revenue-table-wrap">
+          <table className="revenue-table">
+            <thead>
+              <tr>
+                <th scope="col">Месяц</th>
+                <th scope="col">Выручка, ₸</th>
+                <th scope="col">К пред. мес.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.label}</td>
+                  <td>{formatKzt(row.revenue)}</td>
+                  <td>
+                    {row.momPct == null ? (
+                      <span className="revenue-table-muted">—</span>
+                    ) : (
+                      <span className={`revenue-pill${row.momPct >= 0 ? ' is-up' : ' is-down'}`}>
+                        {formatPct(row.momPct)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {forecastRow ? (
+                <tr className="is-forecast">
+                  <td>{forecastRow.label} (прогноз)</td>
+                  <td>{formatKzt(forecastRow.revenue)}</td>
+                  <td>
+                    <span className="revenue-table-muted">—</span>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="revenue-payout">
+          <div className="revenue-payout-head">
+            <h4>Расчёт выплат</h4>
+            <label className="revenue-rate-field">
+              <span>Ставка вознаграждения, %</span>
+              <input
+                className="regulation-editor-input revenue-rate-input"
+                inputMode="decimal"
+                value={String(rewardRate)}
+                onChange={(e) => updateRewardRate(e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="muted small">
+            Для {selected ? monthLabelFull(selected.year, selected.month) : 'месяца'}: план = среднее за 3
+            предыдущих месяца.
+          </p>
+          <div className="revenue-payout-grid">
+            <div className="revenue-payout-row">
+              <span>Факт</span>
+              <strong>{formatKzt(payout.actual)}</strong>
+            </div>
+            <div className="revenue-payout-row">
+              <span>План (среднее 3 мес.)</span>
+              <strong>{formatKzt(payout.planAvg)}</strong>
+            </div>
+            <div className={`revenue-payout-row is-base${payout.base >= 0 ? ' is-up' : ' is-down'}`}>
+              <span>База (факт − план)</span>
+              <strong>
+                {payout.base >= 0 ? '+' : '−'}
+                {formatKzt(Math.abs(payout.base))}
+              </strong>
+            </div>
+            <div className="revenue-payout-row is-total">
+              <span>К выплате ({payout.rate}%)</span>
+              <strong>{formatKzt(payout.payout)}</strong>
+            </div>
+          </div>
+          <p className="revenue-payout-formula muted small">
+            {formatKzt(payout.actual)} − {formatKzt(payout.planAvg)} = {formatKzt(payout.base)} × {payout.rate}% ={' '}
+            {formatKzt(payout.payout)}
+          </p>
+        </div>
+
+        {insights.length ? (
+          <div className="revenue-insights">
+            <h4>Ключевые инсайты</h4>
+            <ul>
+              {insights.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {exportError ? <p className="error">{exportError}</p> : null}
       </section>
 
       <section className="revenue-card" ref={formRef}>

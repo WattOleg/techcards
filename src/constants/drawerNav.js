@@ -5,5 +5,5 @@ export const DRAWER_ITEMS = [
   { id: 'checklist-opening', label: 'Чек-лист открытия смены' },
   { id: 'checklist-closing', label: 'Чек-лист закрытия смены' },
   { id: 'suppliers', label: 'База поставщиков', pin: true },
-  { id: 'revenue', label: 'Выручка' },
+  { id: 'revenue', label: 'Выручка', pin: true },
 ]

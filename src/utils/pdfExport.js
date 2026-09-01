@@ -376,6 +376,123 @@ export async function exportWriteoffsToPdf(payload) {
   })
 }
 
+function revenueReportToPdfContent(payload) {
+  const fmt = (n) => `${Math.round(Number(n) || 0).toLocaleString('ru-RU')} ₸`
+  const pct = (v) => {
+    if (v == null || !Number.isFinite(v)) return '—'
+    return `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`
+  }
+
+  const tableBody = [
+    [
+      { text: 'Месяц', style: 'headCell' },
+      { text: 'Выручка, ₸', style: 'headCell', alignment: 'right' },
+      { text: 'К пред. мес.', style: 'headCell', alignment: 'right' },
+    ],
+    ...payload.tableRows.map((row) => [
+      { text: row.label, margin: [2, 3, 2, 3] },
+      { text: fmt(row.revenue), alignment: 'right', margin: [2, 3, 2, 3] },
+      { text: pct(row.momPct), alignment: 'right', margin: [2, 3, 2, 3], color: row.momPct == null ? '#888' : row.momPct >= 0 ? '#059669' : '#dc2626' },
+    ]),
+  ]
+
+  if (payload.forecastRow) {
+    tableBody.push([
+      { text: `${payload.forecastRow.label} (прогноз)`, margin: [2, 3, 2, 3], color: '#0052cc' },
+      { text: fmt(payload.forecastRow.revenue), alignment: 'right', margin: [2, 3, 2, 3], color: '#0052cc' },
+      { text: '—', alignment: 'right', margin: [2, 3, 2, 3], color: '#888' },
+    ])
+  }
+
+  const rolling = payload.rolling
+  const payout = payload.payout
+
+  return [
+    { text: 'ОТЧЁТ ПО ВЫРУЧКЕ БАРА', style: 'title' },
+    { text: toText(payload.periodTitle), style: 'meta', bold: true, fontSize: 12 },
+    { text: `Сформировано: ${toText(payload.generatedAt)}`, style: 'meta', fontSize: 9, color: '#555' },
+    {
+      columns: [
+        { width: '*', stack: [{ text: 'Выручка за период', style: 'revSummaryLabel' }, { text: fmt(payload.periodTotal), style: 'revSummaryValue' }] },
+        { width: '*', stack: [{ text: 'Средняя в месяц', style: 'revSummaryLabel' }, { text: fmt(payload.periodAvg), style: 'revSummaryValue' }] },
+      ],
+      columnGap: 8,
+      margin: [0, 8, 0, 4],
+    },
+    {
+      columns: [
+        {
+          width: '*',
+          stack: [
+            { text: `Рост (${payload.selectedLabel})`, style: 'revSummaryLabel' },
+            { text: pct(rolling.growthVsAvg), style: 'revSummaryValue' },
+          ],
+        },
+        {
+          width: '*',
+          stack: [
+            {
+              text: rolling.nextSlot ? `Прогноз (${payload.forecastRow?.label || ''})` : 'Прогноз',
+              style: 'revSummaryLabel',
+            },
+            { text: fmt(rolling.forecast), style: 'revSummaryValue' },
+          ],
+        },
+      ],
+      columnGap: 8,
+      margin: [0, 0, 0, 10],
+    },
+    { text: 'Данные по месяцам', style: 'subtitle' },
+    {
+      table: { widths: ['*', 90, 72], body: tableBody },
+      layout: pdfTableLayout,
+    },
+    { text: 'Расчёт выплат', style: 'subtitle' },
+    {
+      table: {
+        widths: ['*', '*'],
+        body: [
+          [{ text: 'Месяц расчёта', style: 'headCell' }, { text: toText(payload.selectedLabel), margin: [2, 4, 2, 4] }],
+          [{ text: 'Ставка вознаграждения', style: 'headCell' }, { text: `${payout.rate}%`, margin: [2, 4, 2, 4] }],
+          [{ text: 'Факт', style: 'headCell' }, { text: fmt(payout.actual), margin: [2, 4, 2, 4] }],
+          [{ text: 'План (среднее 3 мес.)', style: 'headCell' }, { text: fmt(payout.planAvg), margin: [2, 4, 2, 4] }],
+          [{ text: 'База (факт − план)', style: 'headCell' }, { text: fmt(payout.base), margin: [2, 4, 2, 4], color: payout.base >= 0 ? '#059669' : '#dc2626' }],
+          [{ text: 'К выплате', style: 'footCell' }, { text: fmt(payout.payout), style: 'footCell', alignment: 'right' }],
+        ],
+      },
+      layout: pdfTableLayout,
+    },
+    {
+      text: `${fmt(payout.actual)} − ${fmt(payout.planAvg)} = ${fmt(payout.base)} × ${payout.rate}% = ${fmt(payout.payout)}`,
+      style: 'meta',
+      margin: [0, 6, 0, 8],
+      fontSize: 9,
+    },
+    { text: 'Ключевые инсайты', style: 'subtitle' },
+    {
+      ul: payload.insights.length ? payload.insights : ['Недостаточно данных для инсайтов.'],
+      margin: [0, 0, 0, 0],
+      fontSize: 10,
+    },
+  ]
+}
+
+/** @param {import('../constants/revenueAnalytics.js').buildReportPayload extends Function ? ReturnType<typeof import('../constants/revenueAnalytics.js').buildReportPayload> : object} payload */
+export async function exportRevenueReportToPdf(payload) {
+  const pdfMake = await getPdfMake()
+  const stem = toText(payload.filenameStem) || 'otchet-vyruchka'
+  const filename = `otchet-vyruchka-${stem}.pdf`
+  const docDef = baseDocDefinition(revenueReportToPdfContent(payload))
+  docDef.styles = {
+    ...docDef.styles,
+    revSummaryLabel: { fontSize: 8, color: '#555', margin: [0, 0, 0, 2] },
+    revSummaryValue: { fontSize: 11, bold: true },
+  }
+  await new Promise((resolve) => {
+    pdfMake.createPdf(docDef).download(filename, null, resolve)
+  })
+}
+
 export async function exportAllCardsToPdf(cards) {
   const pdfMake = await getPdfMake()
   const content = cards.flatMap((card, idx) => {

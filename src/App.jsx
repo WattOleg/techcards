@@ -245,6 +245,7 @@ function App() {
   )
   const [scheduleUnlocked, setScheduleUnlocked] = useState(false)
   const [suppliersUnlocked, setSuppliersUnlocked] = useState(false)
+  const [revenueUnlocked, setRevenueUnlocked] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleSaveError, setScheduleSaveError] = useState('')
   const [scheduleLoadError, setScheduleLoadError] = useState('')
@@ -801,6 +802,10 @@ function App() {
       setPinModal({ open: true, action: 'suppliersUnlock' })
       return
     }
+    if (id === 'revenue' && !revenueUnlocked) {
+      setPinModal({ open: true, action: 'revenueUnlock' })
+      return
+    }
     setActiveSection(id)
   }
 
@@ -854,6 +859,13 @@ function App() {
     if (pinModal.action === 'suppliersUnlock') {
       setSuppliersUnlocked(true)
       setActiveSection('suppliers')
+      closePinModal()
+      return
+    }
+
+    if (pinModal.action === 'revenueUnlock') {
+      setRevenueUnlocked(true)
+      setActiveSection('revenue')
       closePinModal()
       return
     }
@@ -1409,7 +1421,9 @@ function App() {
                 ? 'Графики'
                 : pinModal.action === 'suppliersUnlock'
                   ? 'База поставщиков'
-                  : pinModal.action === 'addRegulationCard'
+                  : pinModal.action === 'revenueUnlock'
+                    ? 'Выручка'
+                    : pinModal.action === 'addRegulationCard'
                   ? 'Новая карточка регламента'
                   : pinModal.action === 'editRegulationCard'
                     ? 'Редактировать карточку'
